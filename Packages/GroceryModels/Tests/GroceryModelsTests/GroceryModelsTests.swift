@@ -197,6 +197,129 @@ struct GroceryModelsTests {
         #expect(run.events.map(\.kind) == [.toolOutput, .modelOutput, .error, .finalAnswer])
     }
 
+    @Test func phoneAFriendUsesAnIsolatedValidatedTaskAndKeepsFinalAnswerWithTheParent() async {
+        let localRun = ModelRun(
+            request: GroceryRequest(text: "Find a lower-sugar cereal"),
+            answer: GroceryAnswer(text: "The household prefers lower sugar."),
+            events: [
+                ModelRunEvent(kind: .toolCall, label: "search-catalog", content: "Find a lower-sugar cereal"),
+                ModelRunEvent(kind: .toolOutput, label: "search-catalog", content: "Plain oats"),
+                ModelRunEvent(kind: .toolOutput, label: "household-context", content: "lower-sugar"),
+                ModelRunEvent(kind: .finalAnswer, label: "answer", content: "The household prefers lower sugar.")
+            ],
+            trace: ModelTrace(
+                strategy: .localOnly,
+                provider: .appleOnDevice,
+                householdID: .nutritionFocusedCouple,
+                intentID: "catalog-and-household",
+                tools: ["search-catalog", "household-context"],
+                toolEvents: [
+                    ModelRunEvent(kind: .toolCall, label: "search-catalog", content: "Find a lower-sugar cereal"),
+                    ModelRunEvent(kind: .toolOutput, label: "search-catalog", content: "Plain oats"),
+                    ModelRunEvent(kind: .toolOutput, label: "household-context", content: "lower-sugar")
+                ]
+            )
+        )
+        let provider = TestRemoteProvider(
+            state: .ready,
+            response: RemoteProviderResponse(
+                answer: GroceryAnswer(text: "Plain oats are the narrowest public-catalog match."),
+                events: [ModelRunEvent(kind: .toolOutput, label: "public-catalog", content: "Plain oats")],
+                tools: ["public-catalog"]
+            )
+        )
+        let assistant = HybridGroceryAssistant(
+            localAssistant: TestLocalAssistant(run: localRun),
+            provider: provider,
+            pattern: .phoneAFriend,
+            parentAnswerer: TestPhoneParentAnswerer(
+                answer: GroceryAnswer(text: "The local parent recommends plain oats while respecting lower-sugar priorities.")
+            )
+        )
+
+        let run = await assistant.answer(
+            for: GroceryRequest(text: "Find a lower-sugar cereal"),
+            household: DemoHousehold(
+                id: .nutritionFocusedCouple,
+                name: "Nutrition-Focused Couple",
+                members: [],
+                weeklySpendingTargetCents: nil,
+                restrictions: [.lactoseIntolerance],
+                priorities: [.lowerSugar],
+                purchaseHistory: [],
+                pantry: [],
+                cart: []
+            )
+        )
+
+        let invocation = await provider.lastInvocation
+        #expect(invocation?.contextView.pattern == .phoneAFriend)
+        #expect(invocation?.contextView.sessionOwnership == .isolatedChild)
+        #expect(invocation?.session.ownership == .isolatedChild)
+        #expect(invocation?.sessionID != invocation?.parentSessionID)
+        #expect(invocation?.contextView.remoteTask?.instructionText == "Use only public catalog evidence to help the parent answer: Find a lower-sugar cereal")
+        #expect(invocation?.contextView.sharedHistory.isEmpty == true)
+        #expect(invocation?.contextView.toolOutputs.map(\.content) == ["Plain oats"])
+        #expect(invocation?.contextView.toolDefinitions == ["public-catalog"])
+        #expect(invocation?.contextView.selectedOptions.contains("history=isolated-child") == true)
+        #expect(invocation?.contextView.selectedOptions.contains("final-answer-owner=local-grocery") == true)
+        #expect(invocation?.contextView.privacyConcerns.contains {
+            $0.contains("Narrower")
+        } == true)
+        #expect(run.answer.text == "The local parent recommends plain oats while respecting lower-sugar priorities.")
+        #expect(run.trace.orchestrationPattern == .phoneAFriend)
+        #expect(run.trace.activeProfiles == [.localGrocery, .claudeChildGrocery])
+        #expect(run.trace.profileTransitions == [
+            ModelProfileTransition(from: .localGrocery, to: .claudeChildGrocery),
+            ModelProfileTransition(from: .claudeChildGrocery, to: .localGrocery)
+        ])
+        #expect(run.trace.finalAnswerProfile == .localGrocery)
+        #expect(run.trace.remoteSessionID == invocation?.sessionID)
+        #expect(run.trace.parentRemoteSessionID == invocation?.parentSessionID)
+        #expect(run.trace.remoteContextView == invocation?.contextView.rendered)
+        #expect(run.events.last?.kind == .finalAnswer)
+        #expect(run.events.last?.label == "local-parent-answer")
+    }
+
+    @Test func phoneAFriendRejectsAnInvalidTaskBeforeCallingTheRemoteProvider() async {
+        let provider = TestRemoteProvider(state: .ready)
+        let assistant = HybridGroceryAssistant(
+            localAssistant: TestLocalAssistant(),
+            provider: provider,
+            pattern: .phoneAFriend
+        )
+
+        let run = await assistant.answer(for: GroceryRequest(text: " \n"))
+
+        #expect(run.trace.error == "phone-friend-task-invalid")
+        #expect(run.trace.orchestrationPattern == nil)
+        #expect(run.trace.remoteContextView == nil)
+        #expect(run.events.map(\.kind) == [.error, .finalAnswer])
+        #expect(await provider.lastInvocation == nil)
+    }
+
+    @Test func phoneAFriendFailsClosedWhenTheChildReturnsAnUndisclosedTool() async {
+        let provider = TestRemoteProvider(
+            state: .ready,
+            response: RemoteProviderResponse(
+                answer: GroceryAnswer(text: "unused"),
+                tools: ["private-household"]
+            )
+        )
+        let assistant = HybridGroceryAssistant(
+            localAssistant: TestLocalAssistant(),
+            provider: provider,
+            pattern: .phoneAFriend
+        )
+
+        let run = await assistant.answer(for: GroceryRequest(text: "Find cereal"))
+
+        #expect(run.trace.error == "claude-disallowed-tool")
+        #expect(run.trace.orchestrationPattern == .phoneAFriend)
+        #expect(run.trace.remoteContextView?.contains("Session ownership: isolated-child-session") == true)
+        #expect(run.events.last?.kind == .finalAnswer)
+    }
+
     @Test func claudeProviderReportsSetupStateAndPassesCredentialOnlyToItsResponder() async throws {
         let credentials = TestClaudeCredentialStore(apiKey: "configured-key")
         let responder = TestClaudeResponder()
@@ -205,7 +328,6 @@ struct GroceryModelsTests {
         #expect(await provider.availability() == .ready)
         let response = try await provider.respond(
             to: RemoteGroceryInvocation(
-                request: GroceryRequest(text: "lentils"),
                 contextView: RemoteContextView(
                     pattern: .batonPass,
                     instructions: "Answer the grocery request.",
@@ -268,7 +390,19 @@ private struct TestLocalAssistant: GroceryAssistant {
     }
 
     func answer(for request: GroceryRequest, household: DemoHousehold?) async -> ModelRun {
-        run
+        return run
+    }
+}
+
+private struct TestPhoneParentAnswerer: PhoneAFriendParentAnswerer {
+    let answer: GroceryAnswer
+
+    func answer(
+        for request: GroceryRequest,
+        childAnswer: GroceryAnswer,
+        household: DemoHousehold?
+    ) async -> GroceryAnswer {
+        answer
     }
 }
 

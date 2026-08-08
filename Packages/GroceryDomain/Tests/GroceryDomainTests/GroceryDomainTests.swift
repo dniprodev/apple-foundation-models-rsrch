@@ -74,4 +74,23 @@ struct GroceryDomainTests {
         #expect(proposal.reason == "Add one more package of Green lentils.")
         #expect(originalCart == [CartItem(productID: lentils, quantity: 1)])
     }
+
+    @Test func remoteTaskIsCanonicalAndBoundedBeforeDisclosure() throws {
+        let task = try RemoteTask(request: GroceryRequest(text: "  Find lower-sugar cereal  "))
+
+        #expect(task.instructionText == "Use only public catalog evidence to help the parent answer: Find lower-sugar cereal")
+        #expect(task.requestText == "Find lower-sugar cereal")
+        #expect(task.instructionText.count <= RemoteTask.maximumRequestLength + RemoteTask.instructionPrefix.count)
+    }
+
+    @Test func remoteTaskRejectsEmptyAndOverlongRequestsDeterministically() {
+        #expect(throws: RemoteTaskValidationError.emptyRequest) {
+            try RemoteTask(request: GroceryRequest(text: " \n\t "))
+        }
+
+        let overlongRequest = String(repeating: "a", count: RemoteTask.maximumRequestLength + 1)
+        #expect(throws: RemoteTaskValidationError.requestTooLong(maximum: RemoteTask.maximumRequestLength)) {
+            try RemoteTask(request: GroceryRequest(text: overlongRequest))
+        }
+    }
 }

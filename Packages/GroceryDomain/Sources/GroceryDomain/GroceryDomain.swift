@@ -8,6 +8,34 @@ public struct GroceryRequest: Sendable, Codable, Equatable {
     }
 }
 
+public enum RemoteTaskValidationError: Error, Sendable, Equatable {
+    case emptyRequest
+    case requestTooLong(maximum: Int)
+}
+
+/// A deliberately small, app-owned unit of work that may cross the remote
+/// model boundary during a phone-a-friend run.
+public struct RemoteTask: Sendable, Codable, Equatable {
+    public static let maximumRequestLength = 160
+    public static let instructionPrefix = "Use only public catalog evidence to help the parent answer: "
+
+    public let requestText: String
+    public let instructionText: String
+
+    public init(request: GroceryRequest) throws {
+        let normalizedRequest = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedRequest.isEmpty else {
+            throw RemoteTaskValidationError.emptyRequest
+        }
+        guard normalizedRequest.count <= Self.maximumRequestLength else {
+            throw RemoteTaskValidationError.requestTooLong(maximum: Self.maximumRequestLength)
+        }
+
+        requestText = normalizedRequest
+        instructionText = Self.instructionPrefix + normalizedRequest
+    }
+}
+
 public struct ProductID: Hashable, Sendable, Codable, Equatable, CustomStringConvertible {
     public let rawValue: String
 
@@ -190,6 +218,7 @@ public enum OrchestrationPattern: String, Sendable, Codable, Equatable {
 public enum ModelProfileID: String, Sendable, Codable, Equatable {
     case localGrocery = "local-grocery"
     case claudeGrocery = "claude-grocery"
+    case claudeChildGrocery = "claude-child-grocery"
 }
 
 public struct ModelProfileTransition: Sendable, Codable, Equatable {
@@ -220,11 +249,37 @@ public struct RemoteHistoryEntry: Sendable, Codable, Equatable {
     }
 }
 
+public enum RemoteSessionOwnership: String, Sendable, Codable, Equatable {
+    case sharedParent = "shared-parent-session"
+    case isolatedChild = "isolated-child-session"
+}
+
+public struct RemoteSession: Sendable, Codable, Equatable {
+    public let id: String
+    public let parentID: String?
+    public let ownership: RemoteSessionOwnership
+
+    public init(
+        ownership: RemoteSessionOwnership,
+        id: String = UUID().uuidString,
+        parentID: String? = nil
+    ) {
+        precondition(!id.isEmpty, "Remote session IDs must not be empty.")
+        if ownership == .isolatedChild {
+            precondition(parentID != nil && parentID != id, "Isolated child sessions require a distinct parent session.")
+        }
+        self.id = id
+        self.parentID = parentID
+        self.ownership = ownership
+    }
+}
+
 /// The exact semantic context the app intends to disclose to a remote model.
 /// Rendering is deterministic so the trace can be compared with the provider
 /// invocation captured by a test transport.
 public struct RemoteContextView: Sendable, Codable, Equatable {
     public let pattern: OrchestrationPattern
+    public let sessionOwnership: RemoteSessionOwnership
     public let instructions: String
     public let prompt: String
     public let sharedHistory: [RemoteHistoryEntry]
@@ -232,11 +287,13 @@ public struct RemoteContextView: Sendable, Codable, Equatable {
     public let toolOutputs: [RemoteHistoryEntry]
     public let selectedOptions: [String]
     public let attachments: [String]
+    public let remoteTask: RemoteTask?
     public let disclosureFacts: [String]
     public let privacyConcerns: [String]
 
     public init(
         pattern: OrchestrationPattern,
+        sessionOwnership: RemoteSessionOwnership = .sharedParent,
         instructions: String,
         prompt: String,
         sharedHistory: [RemoteHistoryEntry],
@@ -244,10 +301,12 @@ public struct RemoteContextView: Sendable, Codable, Equatable {
         toolOutputs: [RemoteHistoryEntry] = [],
         selectedOptions: [String] = [],
         attachments: [String] = [],
+        remoteTask: RemoteTask? = nil,
         disclosureFacts: [String] = [],
         privacyConcerns: [String]
     ) {
         self.pattern = pattern
+        self.sessionOwnership = sessionOwnership
         self.instructions = instructions
         self.prompt = prompt
         self.sharedHistory = sharedHistory
@@ -255,6 +314,7 @@ public struct RemoteContextView: Sendable, Codable, Equatable {
         self.toolOutputs = toolOutputs
         self.selectedOptions = selectedOptions
         self.attachments = attachments
+        self.remoteTask = remoteTask
         self.disclosureFacts = disclosureFacts
         self.privacyConcerns = privacyConcerns
     }
@@ -262,6 +322,7 @@ public struct RemoteContextView: Sendable, Codable, Equatable {
     public var rendered: String {
         var lines = [
             "Pattern: \(pattern.rawValue)",
+            "Session ownership: \(sessionOwnership.rawValue)",
             "Instructions: \(instructions)",
             "Prompt: \(prompt)",
             "Shared history:"
@@ -270,6 +331,7 @@ public struct RemoteContextView: Sendable, Codable, Equatable {
         lines.append("Tool definitions: \(toolDefinitions.joined(separator: ", "))")
         lines.append("Tool outputs:")
         lines += toolOutputs.map { "- \($0.label): \($0.content)" }
+        lines.append("Remote task: \(remoteTask?.instructionText ?? "none")")
         lines.append("Selected options: \(selectedOptions.joined(separator: ", "))")
         lines.append("Attachments: \(attachments.isEmpty ? "none" : attachments.joined(separator: ", "))")
         lines.append("Disclosure facts:")
@@ -281,21 +343,24 @@ public struct RemoteContextView: Sendable, Codable, Equatable {
 }
 
 public struct RemoteGroceryInvocation: Sendable, Codable, Equatable {
-    public let request: GroceryRequest
     public let contextView: RemoteContextView
     public let correlationID: String
     public let remoteContextID: String
+    public let session: RemoteSession
+
+    public var sessionID: String { session.id }
+    public var parentSessionID: String? { session.parentID }
 
     public init(
-        request: GroceryRequest,
         contextView: RemoteContextView,
         correlationID: String = UUID().uuidString,
-        remoteContextID: String = UUID().uuidString
+        remoteContextID: String = UUID().uuidString,
+        session: RemoteSession = RemoteSession(ownership: .sharedParent)
     ) {
-        self.request = request
         self.contextView = contextView
         self.correlationID = correlationID
         self.remoteContextID = remoteContextID
+        self.session = session
     }
 }
 
@@ -369,6 +434,8 @@ public struct ModelTrace: Sendable, Codable, Equatable {
     public let remoteContextView: String?
     public let correlationID: String?
     public let remoteContextID: String?
+    public let remoteSessionID: String?
+    public let parentRemoteSessionID: String?
     public let orchestrationPattern: OrchestrationPattern?
     public let activeProfiles: [ModelProfileID]
     public let profileTransitions: [ModelProfileTransition]
@@ -387,6 +454,8 @@ public struct ModelTrace: Sendable, Codable, Equatable {
         remoteContextView: String? = nil,
         correlationID: String? = nil,
         remoteContextID: String? = nil,
+        remoteSessionID: String? = nil,
+        parentRemoteSessionID: String? = nil,
         orchestrationPattern: OrchestrationPattern? = nil,
         activeProfiles: [ModelProfileID] = [],
         profileTransitions: [ModelProfileTransition] = [],
@@ -404,6 +473,8 @@ public struct ModelTrace: Sendable, Codable, Equatable {
         self.remoteContextView = remoteContextView
         self.correlationID = correlationID
         self.remoteContextID = remoteContextID
+        self.remoteSessionID = remoteSessionID
+        self.parentRemoteSessionID = parentRemoteSessionID
         self.orchestrationPattern = orchestrationPattern
         self.activeProfiles = activeProfiles
         self.profileTransitions = profileTransitions
@@ -472,6 +543,7 @@ public extension GroceryAssistant {
 public struct AppDependencies: Sendable {
     public let assistant: any GroceryAssistant
     public let hybridAssistant: (any GroceryAssistant)?
+    public let phoneAFriendAssistant: (any GroceryAssistant)?
     public let catalog: any ProductCatalog
     public let householdStore: any DemoHouseholdRepository
     public let claudeCredentialStore: (any ClaudeCredentialStore)?
@@ -481,10 +553,12 @@ public struct AppDependencies: Sendable {
         catalog: any ProductCatalog,
         householdStore: any DemoHouseholdRepository,
         hybridAssistant: (any GroceryAssistant)? = nil,
+        phoneAFriendAssistant: (any GroceryAssistant)? = nil,
         claudeCredentialStore: (any ClaudeCredentialStore)? = nil
     ) {
         self.assistant = assistant
         self.hybridAssistant = hybridAssistant
+        self.phoneAFriendAssistant = phoneAFriendAssistant
         self.catalog = catalog
         self.householdStore = householdStore
         self.claudeCredentialStore = claudeCredentialStore

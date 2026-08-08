@@ -97,6 +97,19 @@ struct ReferenceAppView: View {
             }
 
             if model.selectedStrategy == .hybrid {
+                Picker("Orchestration", selection: $model.selectedOrchestrationPattern) {
+                    Text("Baton-pass").tag(OrchestrationPattern.batonPass)
+                    Text("Phone-a-friend").tag(OrchestrationPattern.phoneAFriend)
+                }
+
+                Text(
+                    model.selectedOrchestrationPattern == .phoneAFriend
+                        ? "A bounded task goes to an isolated Claude child; the local parent owns the final answer."
+                        : "The local and Claude profiles share session history; Claude owns the final answer."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
                 Text(
                     model.claudeCredentialConfigured
                         ? "Claude credential is stored in Keychain."
@@ -173,6 +186,12 @@ struct ReferenceAppView: View {
                         LabeledContent("Tools", value: run.trace.tools.joined(separator: ", "))
                         if let pattern = run.trace.orchestrationPattern {
                             LabeledContent("Orchestration", value: pattern.rawValue)
+                        }
+                        if let sessionID = run.trace.remoteSessionID {
+                            LabeledContent("Remote session", value: sessionID)
+                        }
+                        if let parentSessionID = run.trace.parentRemoteSessionID {
+                            LabeledContent("Parent session", value: parentSessionID)
                         }
                         if !run.trace.activeProfiles.isEmpty {
                             LabeledContent(

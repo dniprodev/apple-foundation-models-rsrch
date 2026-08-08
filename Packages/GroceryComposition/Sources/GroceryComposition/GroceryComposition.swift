@@ -20,12 +20,18 @@ public enum GroceryAppComposition {
             localAssistant: localAssistant,
             provider: claudeProvider
         )
+        let phoneAFriendAssistant = HybridGroceryAssistant(
+            localAssistant: localAssistant,
+            provider: claudeProvider,
+            pattern: .phoneAFriend
+        )
         let householdStore = DemoHouseholdStore(catalogProducts: catalog.products)
         return AppDependencies(
             assistant: localAssistant,
             catalog: catalog,
             householdStore: householdStore,
             hybridAssistant: hybridAssistant,
+            phoneAFriendAssistant: phoneAFriendAssistant,
             claudeCredentialStore: claudeCredentialStore
         )
     }

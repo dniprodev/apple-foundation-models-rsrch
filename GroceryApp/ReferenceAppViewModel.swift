@@ -16,10 +16,12 @@ final class ReferenceAppViewModel: ObservableObject {
     @Published var catalogQuery = ""
     @Published var claudeCredentialInput = ""
     @Published var selectedStrategy: ModelStrategy = .localOnly
+    @Published var selectedOrchestrationPattern: OrchestrationPattern = .batonPass
     @Published private(set) var selectedHouseholdID: DemoHouseholdID = .budgetFamily
 
     private let localAssistant: any GroceryAssistant
     private let hybridAssistant: (any GroceryAssistant)?
+    private let phoneAFriendAssistant: (any GroceryAssistant)?
     private let catalog: any ProductCatalog
     private let householdStore: any DemoHouseholdRepository
     private let claudeCredentialStore: (any ClaudeCredentialStore)?
@@ -27,6 +29,7 @@ final class ReferenceAppViewModel: ObservableObject {
     init(dependencies: AppDependencies) {
         localAssistant = dependencies.assistant
         hybridAssistant = dependencies.hybridAssistant
+        phoneAFriendAssistant = dependencies.phoneAFriendAssistant
         catalog = dependencies.catalog
         householdStore = dependencies.householdStore
         claudeCredentialStore = dependencies.claudeCredentialStore
@@ -148,7 +151,14 @@ final class ReferenceAppViewModel: ObservableObject {
         guard !trimmed.isEmpty else { return }
         requestText = trimmed
         let household = await householdStore.household(for: selectedHouseholdID)
-        let assistant = selectedStrategy == .hybrid ? hybridAssistant : localAssistant
+        let assistant: (any GroceryAssistant)?
+        if selectedStrategy == .localOnly {
+            assistant = localAssistant
+        } else {
+            assistant = selectedOrchestrationPattern == .phoneAFriend
+                ? phoneAFriendAssistant
+                : hybridAssistant
+        }
         guard let assistant else {
             modelRun = ModelRun(
                 request: GroceryRequest(text: trimmed),

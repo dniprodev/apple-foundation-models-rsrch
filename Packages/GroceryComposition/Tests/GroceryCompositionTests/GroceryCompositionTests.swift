@@ -14,5 +14,6 @@ struct GroceryCompositionTests {
         let dependencies = GroceryAppComposition.makeAppDependencies(useOnDeviceModel: false)
 
         #expect(await dependencies.householdStore.households().map(\.id) == DemoHouseholdID.allCases)
+        #expect(dependencies.phoneAFriendAssistant != nil)
     }
 }
