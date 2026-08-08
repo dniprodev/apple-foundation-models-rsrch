@@ -2,6 +2,133 @@ import Combine
 import GroceryComposition
 import GroceryDomain
 
+enum ManualDemoScenario: String, CaseIterable, Identifiable, Hashable {
+    case privatePurchaseAnalysis
+    case healthierSubstitutions
+    case pantryAwarePlanning
+    case cartReview
+    case householdComparison
+    case batonPass
+    case phoneAFriend
+    case missingClaudeSetup
+    case providerFailure
+
+    private struct Configuration {
+        let title: String
+        let description: String
+        let householdID: DemoHouseholdID
+        let strategy: ModelStrategy
+        let orchestrationPattern: OrchestrationPattern
+        let request: GroceryRequest
+        let catalogQuery: String
+    }
+
+    var id: String { rawValue }
+
+    private var configuration: Configuration {
+        switch self {
+        case .privatePurchaseAnalysis:
+            Configuration(
+                title: "Private purchase analysis",
+                description: "Run a local-only request against a fictional household and inspect its household and catalog evidence.",
+                householdID: .budgetFamily,
+                strategy: .localOnly,
+                orchestrationPattern: .batonPass,
+                request: GroceryRequest(text: "lentils"),
+                catalogQuery: ""
+            )
+        case .healthierSubstitutions:
+            Configuration(
+                title: "Hybrid healthier substitutions",
+                description: "Compare a hybrid substitution request with the selected household's dietary priorities and inspect the remote context.",
+                householdID: .nutritionFocusedCouple,
+                strategy: .hybrid,
+                orchestrationPattern: .batonPass,
+                request: GroceryRequest(text: "Find a lower-sugar cereal"),
+                catalogQuery: ""
+            )
+        case .pantryAwarePlanning:
+            Configuration(
+                title: "Pantry-aware planning",
+                description: "Ask for a pantry-aware plan through an isolated child session and inspect the bounded Remote Task.",
+                householdID: .lowWasteSoloShopper,
+                strategy: .hybrid,
+                orchestrationPattern: .phoneAFriend,
+                request: GroceryRequest(text: "Plan a low-waste dinner using pantry items"),
+                catalogQuery: ""
+            )
+        case .cartReview:
+            Configuration(
+                title: "Cart review and approval",
+                description: "Open a cart proposal preview, verify the cart is unchanged, then approve or decline it explicitly.",
+                householdID: .budgetFamily,
+                strategy: .localOnly,
+                orchestrationPattern: .batonPass,
+                request: GroceryRequest(text: "weeknight"),
+                catalogQuery: "weeknight"
+            )
+        case .householdComparison:
+            Configuration(
+                title: "Cross-household personalization",
+                description: "Repeat the same request after switching households and compare the household IDs and evidence in Model Trace.",
+                householdID: .nutritionFocusedCouple,
+                strategy: .localOnly,
+                orchestrationPattern: .batonPass,
+                request: GroceryRequest(text: "lentils"),
+                catalogQuery: ""
+            )
+        case .batonPass:
+            Configuration(
+                title: "Baton-pass disclosure",
+                description: "Inspect shared-history disclosure and Claude's final-answer ownership.",
+                householdID: .budgetFamily,
+                strategy: .hybrid,
+                orchestrationPattern: .batonPass,
+                request: GroceryRequest(text: "Find a lower-sugar cereal"),
+                catalogQuery: ""
+            )
+        case .phoneAFriend:
+            Configuration(
+                title: "Phone-a-friend disclosure",
+                description: "Inspect isolated child-session disclosure and the local parent's final-answer ownership.",
+                householdID: .lowWasteSoloShopper,
+                strategy: .hybrid,
+                orchestrationPattern: .phoneAFriend,
+                request: GroceryRequest(text: "Plan a low-waste dinner using pantry items"),
+                catalogQuery: ""
+            )
+        case .missingClaudeSetup:
+            Configuration(
+                title: "Missing Claude setup",
+                description: "Remove the credential, run the request, and inspect the generic setup message and safe error code.",
+                householdID: .budgetFamily,
+                strategy: .hybrid,
+                orchestrationPattern: .batonPass,
+                request: GroceryRequest(text: "Find lentils"),
+                catalogQuery: ""
+            )
+        case .providerFailure:
+            Configuration(
+                title: "Provider failure",
+                description: "With a credential saved, run the request and inspect the generic provider failure and safe trace facts.",
+                householdID: .budgetFamily,
+                strategy: .hybrid,
+                orchestrationPattern: .batonPass,
+                request: GroceryRequest(text: "Find lentils"),
+                catalogQuery: ""
+            )
+        }
+    }
+
+    var title: String { configuration.title }
+    var description: String { configuration.description }
+    var householdID: DemoHouseholdID { configuration.householdID }
+    var strategy: ModelStrategy { configuration.strategy }
+    var orchestrationPattern: OrchestrationPattern { configuration.orchestrationPattern }
+    var request: GroceryRequest { configuration.request }
+    var catalogQuery: String { configuration.catalogQuery }
+}
+
 @MainActor
 final class ReferenceAppViewModel: ObservableObject {
     @Published private(set) var modelRun: ModelRun?
@@ -12,6 +139,7 @@ final class ReferenceAppViewModel: ObservableObject {
     @Published private(set) var isLoaded = false
     @Published private(set) var claudeCredentialConfigured = false
     @Published private(set) var claudeCredentialError: String?
+    @Published private(set) var selectedScenario: ManualDemoScenario?
     @Published var requestText = ""
     @Published var catalogQuery = ""
     @Published var claudeCredentialInput = ""
@@ -144,6 +272,29 @@ final class ReferenceAppViewModel: ObservableObject {
         cartProposal = nil
         cartProposalError = nil
         await load()
+    }
+
+    func runScenario(_ scenario: ManualDemoScenario) async {
+        let isCartReview = scenario == .cartReview
+        let preservesComparisonHousehold = selectedScenario == scenario && scenario == .householdComparison
+        if isCartReview {
+            await householdStore.reset(scenario.householdID)
+        }
+        selectedScenario = scenario
+        if !preservesComparisonHousehold {
+            selectHousehold(scenario.householdID)
+        }
+        selectedStrategy = scenario.strategy
+        selectedOrchestrationPattern = scenario.orchestrationPattern
+        catalogQuery = scenario.catalogQuery
+        searchCatalog(catalogQuery)
+
+        await submit(scenario.request.text)
+
+        if isCartReview {
+            await load()
+            await proposeAddingToSelectedHouseholdCart(ProductID("whole-wheat-pasta"))
+        }
     }
 
     func submit(_ text: String) async {

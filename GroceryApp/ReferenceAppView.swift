@@ -12,6 +12,7 @@ struct ReferenceAppView: View {
                     List {
                         householdSection
                         strategySection
+                        manualDemoScenariosSection
                         catalogSection
                         assistantSection
                         cartProposalSection
@@ -142,6 +143,42 @@ struct ReferenceAppView: View {
                         .font(.footnote)
                         .foregroundStyle(.red)
                 }
+            }
+        }
+    }
+
+    private var manualDemoScenariosSection: some View {
+        Section("Manual Demo Scenarios") {
+            Text("Run a repeatable milestone-one path, then inspect the Model Run and Model Trace below.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            ForEach(ManualDemoScenario.allCases) { scenario in
+                Button {
+                    Task { await model.runScenario(scenario) }
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(scenario.title)
+                                .font(.headline)
+                            Spacer()
+                            if model.selectedScenario == scenario {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                        Text(scenario.description)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+
+            if let scenario = model.selectedScenario {
+                Text("Selected: \(scenario.title). Expand Model Trace after the run; no quality score or exact generated wording is required.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
     }
