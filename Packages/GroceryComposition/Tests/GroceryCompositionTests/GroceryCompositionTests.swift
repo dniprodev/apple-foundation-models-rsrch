@@ -9,4 +9,10 @@ struct GroceryCompositionTests {
 
         #expect(run.answer.evidence == ["Green lentils"])
     }
+
+    @Test func compositionProvidesAllInitialDemoHouseholds() async {
+        let dependencies = GroceryAppComposition.makeAppDependencies()
+
+        #expect(await dependencies.householdStore.households().map(\.id) == DemoHouseholdID.allCases)
+    }
 }

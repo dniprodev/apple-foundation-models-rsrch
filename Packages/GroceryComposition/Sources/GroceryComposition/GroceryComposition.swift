@@ -6,6 +6,7 @@ public enum GroceryAppComposition {
     public static func makeAppDependencies() -> AppDependencies {
         let catalog = DemoCatalog()
         let assistant = LocalGroceryAssistant(catalog: catalog)
-        return AppDependencies(assistant: assistant)
+        let householdStore = DemoHouseholdStore(catalogProducts: catalog.products)
+        return AppDependencies(assistant: assistant, householdStore: householdStore)
     }
 }
