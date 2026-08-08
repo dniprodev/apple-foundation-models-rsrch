@@ -3,11 +3,11 @@ import SwiftUI
 
 @main
 struct GroceryApp: App {
-    @StateObject private var model: GroceryAppModel
+    @StateObject private var model: ReferenceAppViewModel
 
     init() {
         _model = StateObject(
-            wrappedValue: GroceryAppModel(
+            wrappedValue: ReferenceAppViewModel(
                 dependencies: GroceryAppComposition.makeAppDependencies()
             )
         )
@@ -15,7 +15,7 @@ struct GroceryApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(model: model)
+            ReferenceAppView(model: model)
         }
     }
 }

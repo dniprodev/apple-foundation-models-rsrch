@@ -8,10 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		1FDDD213850E21E9C2BC664B /* GroceryComposition in Frameworks */ = {isa = PBXBuildFile; productRef = 89A5649E7539D8AE1B5AC06E /* GroceryComposition */; };
-		211A3EEE32B0A9AE7FB36EC1 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 064719EA88B7CEE70DD416EA /* ContentView.swift */; };
+		211A3EEE32B0A9AE7FB36EC1 /* ReferenceAppView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 064719EA88B7CEE70DD416EA /* ReferenceAppView.swift */; };
 		404A04F9A4C29E1C29FCBECD /* GroceryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E58E5D3B62AD6BE1681CBE9 /* GroceryApp.swift */; };
-		6A42B5A749682B6FB56D046E /* GroceryAppSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AB90D5A49A442133E8BE37 /* GroceryAppSmokeTests.swift */; };
-		A98008CF11F67A397339E3ED /* GroceryAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 453CE6D1D69B150128E7BCC9 /* GroceryAppModel.swift */; };
+		6A42B5A749682B6FB56D046E /* ReferenceAppViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AB90D5A49A442133E8BE37 /* ReferenceAppViewModelTests.swift */; };
+		A98008CF11F67A397339E3ED /* ReferenceAppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 453CE6D1D69B150128E7BCC9 /* ReferenceAppViewModel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -25,12 +25,12 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		064719EA88B7CEE70DD416EA /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		064719EA88B7CEE70DD416EA /* ReferenceAppView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceAppView.swift; sourceTree = "<group>"; };
 		18BEFCA8F6C97778AACE814D /* GroceryAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = GroceryAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3019866F1481401A3DA0107E /* GroceryComposition */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GroceryComposition; path = Packages/GroceryComposition; sourceTree = SOURCE_ROOT; };
-		453CE6D1D69B150128E7BCC9 /* GroceryAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroceryAppModel.swift; sourceTree = "<group>"; };
+		453CE6D1D69B150128E7BCC9 /* ReferenceAppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceAppViewModel.swift; sourceTree = "<group>"; };
 		6E58E5D3B62AD6BE1681CBE9 /* GroceryApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroceryApp.swift; sourceTree = "<group>"; };
-		C0AB90D5A49A442133E8BE37 /* GroceryAppSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroceryAppSmokeTests.swift; sourceTree = "<group>"; };
+		C0AB90D5A49A442133E8BE37 /* ReferenceAppViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceAppViewModelTests.swift; sourceTree = "<group>"; };
 		C2B2F306173B9522B893756F /* GroceryApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GroceryApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -56,7 +56,7 @@
 		4800EAFA7965C355B3C7F647 /* GroceryAppTests */ = {
 			isa = PBXGroup;
 			children = (
-				C0AB90D5A49A442133E8BE37 /* GroceryAppSmokeTests.swift */,
+				C0AB90D5A49A442133E8BE37 /* ReferenceAppViewModelTests.swift */,
 			);
 			path = GroceryAppTests;
 			sourceTree = "<group>";
@@ -73,9 +73,9 @@
 		7AE275B35BE29066DD87D415 /* GroceryApp */ = {
 			isa = PBXGroup;
 			children = (
-				064719EA88B7CEE70DD416EA /* ContentView.swift */,
+				064719EA88B7CEE70DD416EA /* ReferenceAppView.swift */,
 				6E58E5D3B62AD6BE1681CBE9 /* GroceryApp.swift */,
-				453CE6D1D69B150128E7BCC9 /* GroceryAppModel.swift */,
+				453CE6D1D69B150128E7BCC9 /* ReferenceAppViewModel.swift */,
 			);
 			path = GroceryApp;
 			sourceTree = "<group>";
@@ -176,7 +176,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6A42B5A749682B6FB56D046E /* GroceryAppSmokeTests.swift in Sources */,
+				6A42B5A749682B6FB56D046E /* ReferenceAppViewModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -184,9 +184,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				211A3EEE32B0A9AE7FB36EC1 /* ContentView.swift in Sources */,
+				211A3EEE32B0A9AE7FB36EC1 /* ReferenceAppView.swift in Sources */,
 				404A04F9A4C29E1C29FCBECD /* GroceryApp.swift in Sources */,
-				A98008CF11F67A397339E3ED /* GroceryAppModel.swift in Sources */,
+				A98008CF11F67A397339E3ED /* ReferenceAppViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

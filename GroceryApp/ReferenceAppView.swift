@@ -2,8 +2,8 @@ import Foundation
 import GroceryDomain
 import SwiftUI
 
-struct ContentView: View {
-    @ObservedObject var model: GroceryAppModel
+struct ReferenceAppView: View {
+    @ObservedObject var model: ReferenceAppViewModel
 
     var body: some View {
         NavigationStack {

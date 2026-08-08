@@ -3,9 +3,9 @@ import GroceryDomain
 @testable import GroceryApp
 
 @MainActor
-final class GroceryAppSmokeTests: XCTestCase {
+final class ReferenceAppViewModelTests: XCTestCase {
     func testComposedShellRunsALocalRequest() async {
-        let model = GroceryAppModel.makeDemo()
+        let model = ReferenceAppViewModel.makeDemo()
 
         await model.submit("lentils")
 
@@ -13,7 +13,7 @@ final class GroceryAppSmokeTests: XCTestCase {
     }
 
     func testModelLoadsAllDemoHouseholdsAndTheirContext() async {
-        let model = GroceryAppModel.makeDemo()
+        let model = ReferenceAppViewModel.makeDemo()
 
         await model.load()
         model.selectHousehold(.lowWasteSoloShopper)
@@ -26,7 +26,7 @@ final class GroceryAppSmokeTests: XCTestCase {
     }
 
     func testModelSearchesTheBundledCatalogAndResetsSelectedHousehold() async {
-        let model = GroceryAppModel.makeDemo()
+        let model = ReferenceAppViewModel.makeDemo()
 
         await model.load()
         model.searchCatalog("weeknight")

@@ -3,7 +3,7 @@ import GroceryComposition
 import GroceryDomain
 
 @MainActor
-final class GroceryAppModel: ObservableObject {
+final class ReferenceAppViewModel: ObservableObject {
     @Published private(set) var modelRun: ModelRun?
     @Published private(set) var households: [DemoHousehold] = []
     @Published private(set) var catalogResults: [CatalogProduct] = []
@@ -22,8 +22,8 @@ final class GroceryAppModel: ObservableObject {
         householdStore = dependencies.householdStore
     }
 
-    static func makeDemo() -> GroceryAppModel {
-        GroceryAppModel(dependencies: GroceryAppComposition.makeAppDependencies())
+    static func makeDemo() -> ReferenceAppViewModel {
+        ReferenceAppViewModel(dependencies: GroceryAppComposition.makeAppDependencies())
     }
 
     var selectedHousehold: DemoHousehold? {
