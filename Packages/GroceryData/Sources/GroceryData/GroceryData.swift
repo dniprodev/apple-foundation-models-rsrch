@@ -14,6 +14,10 @@ public struct DemoCatalog: ProductCatalog, Sendable {
         }
     }
 
+    public func product(for id: ProductID) -> CatalogProduct? {
+        products.first { $0.id == id }
+    }
+
     public static let defaultProducts = [
         CatalogProduct(id: ProductID("green-lentils"), name: "Green lentils", detail: "A pantry staple for soups and salads."),
         CatalogProduct(id: ProductID("whole-wheat-pasta"), name: "Whole-wheat pasta", detail: "A quick base for a weeknight meal."),

@@ -19,4 +19,8 @@ private struct TestCatalog: ProductCatalog, Sendable {
         let query = text.lowercased()
         return products.filter { $0.name.lowercased().contains(query) }
     }
+
+    func product(for id: ProductID) -> CatalogProduct? {
+        products.first { $0.id == id }
+    }
 }

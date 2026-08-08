@@ -7,6 +7,6 @@ public enum GroceryAppComposition {
         let catalog = DemoCatalog()
         let assistant = LocalGroceryAssistant(catalog: catalog)
         let householdStore = DemoHouseholdStore(catalogProducts: catalog.products)
-        return AppDependencies(assistant: assistant, householdStore: householdStore)
+        return AppDependencies(assistant: assistant, catalog: catalog, householdStore: householdStore)
     }
 }

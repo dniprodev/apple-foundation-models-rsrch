@@ -169,6 +169,7 @@ public struct CatalogProduct: Sendable, Equatable {
 
 public protocol ProductCatalog: Sendable {
     func search(matching text: String) -> [CatalogProduct]
+    func product(for id: ProductID) -> CatalogProduct?
 }
 
 public protocol GroceryAssistant: Sendable {
@@ -177,10 +178,16 @@ public protocol GroceryAssistant: Sendable {
 
 public struct AppDependencies: Sendable {
     public let assistant: any GroceryAssistant
+    public let catalog: any ProductCatalog
     public let householdStore: any DemoHouseholdRepository
 
-    public init(assistant: any GroceryAssistant, householdStore: any DemoHouseholdRepository) {
+    public init(
+        assistant: any GroceryAssistant,
+        catalog: any ProductCatalog,
+        householdStore: any DemoHouseholdRepository
+    ) {
         self.assistant = assistant
+        self.catalog = catalog
         self.householdStore = householdStore
     }
 }
