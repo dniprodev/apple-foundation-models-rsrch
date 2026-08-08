@@ -36,7 +36,7 @@ final class ReferenceAppViewModelTests: XCTestCase {
         XCTAssertFalse(model.selectedHousehold?.cart.isEmpty ?? true)
     }
 
-    func testModelSearchesTheBundledCatalogAndResetsSelectedHousehold() async {
+    func testCatalogCartActionRequiresExplicitApproval() async {
         let model = ReferenceAppViewModel.makeDemo()
 
         await model.load()
@@ -46,12 +46,33 @@ final class ReferenceAppViewModelTests: XCTestCase {
         XCTAssertEqual(model.productName(for: ProductID("green-lentils")), "Green lentils")
 
         let originalCart = model.selectedHousehold?.cart
-        await model.addToSelectedHouseholdCart(ProductID("whole-wheat-pasta"))
+        await model.proposeAddingToSelectedHouseholdCart(ProductID("whole-wheat-pasta"))
+        XCTAssertEqual(model.selectedHousehold?.cart, originalCart)
+        XCTAssertEqual(model.cartProposal?.householdID, .budgetFamily)
+        XCTAssertEqual(model.cartProposal?.reason, "Add one Whole-wheat pasta to the cart.")
+
+        await model.declineCartProposal()
+        XCTAssertNil(model.cartProposal)
+        XCTAssertEqual(model.selectedHousehold?.cart, originalCart)
+
+        await model.proposeAddingToSelectedHouseholdCart(ProductID("whole-wheat-pasta"))
+        await model.approveCartProposal()
+
+        XCTAssertNil(model.cartProposal)
         XCTAssertNotEqual(model.selectedHousehold?.cart, originalCart)
+    }
+
+    func testResetClearsAnUnapprovedCartProposal() async {
+        let model = ReferenceAppViewModel.makeDemo()
+
+        await model.load()
+        let originalCart = model.selectedHousehold?.cart
+        await model.proposeAddingToSelectedHouseholdCart(ProductID("whole-wheat-pasta"))
+        XCTAssertNotNil(model.cartProposal)
 
         await model.resetSelectedHousehold()
 
+        XCTAssertNil(model.cartProposal)
         XCTAssertEqual(model.selectedHousehold?.cart, originalCart)
-        XCTAssertEqual(model.catalogResults.map(\.name), ["Whole-wheat pasta"])
     }
 }

@@ -65,10 +65,49 @@ struct GroceryDataTests {
         let products = [CatalogProduct(id: ProductID("lentils"), name: "Green lentils", detail: "Pantry staple")]
         let store = DemoHouseholdStore(catalogProducts: products, seed: 42)
         let original = await store.household(for: .budgetFamily)
+        let originalCart = original?.cart ?? []
+        let changedCart = [CartItem(productID: ProductID("lentils"), quantity: 7)]
+        let proposal = CartProposal(
+            householdID: .budgetFamily,
+            originalCart: originalCart,
+            proposedCart: changedCart,
+            reason: "Test cart change."
+        )
 
-        await store.replaceCart(for: .budgetFamily, with: [CartItem(productID: ProductID("lentils"), quantity: 7)])
+        #expect(await store.apply(proposal))
         await store.reset(.budgetFamily)
 
         #expect(await store.household(for: .budgetFamily) == original)
+    }
+
+    @Test func applyingAProposalRequiresAnUnchangedOriginalCart() async {
+        let catalog = [CatalogProduct(name: "Green lentils", detail: "A pantry staple.")]
+        let store = DemoHouseholdStore(catalogProducts: catalog)
+        let originalCart = await store.household(for: .budgetFamily)?.cart ?? []
+        let proposedCart = originalCart + [CartItem(productID: catalog[0].id, quantity: 1)]
+        let proposal = CartProposal(
+            householdID: .budgetFamily,
+            originalCart: originalCart,
+            proposedCart: proposedCart,
+            reason: "Add green lentils."
+        )
+
+        #expect(await store.apply(proposal))
+        #expect(await store.household(for: .budgetFamily)?.cart == proposedCart)
+    }
+
+    @Test func staleCartProposalDoesNotMutateTheHousehold() async {
+        let catalog = [CatalogProduct(name: "Green lentils", detail: "A pantry staple.")]
+        let store = DemoHouseholdStore(catalogProducts: catalog)
+        let originalCart = await store.household(for: .budgetFamily)?.cart ?? []
+        let proposal = CartProposal(
+            householdID: .budgetFamily,
+            originalCart: [],
+            proposedCart: originalCart + [CartItem(productID: catalog[0].id, quantity: 1)],
+            reason: "Add green lentils."
+        )
+
+        #expect(!(await store.apply(proposal)))
+        #expect(await store.household(for: .budgetFamily)?.cart == originalCart)
     }
 }

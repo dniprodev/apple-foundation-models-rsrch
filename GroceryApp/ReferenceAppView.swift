@@ -13,6 +13,7 @@ struct ReferenceAppView: View {
                         householdSection
                         catalogSection
                         assistantSection
+                        cartProposalSection
                         resetSection
                     }
                     .listStyle(.insetGrouped)
@@ -77,8 +78,8 @@ struct ReferenceAppView: View {
                         Text(product.detail)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Button("Add to demo cart") {
-                            Task { await model.addToSelectedHouseholdCart(product.id) }
+                        Button("Propose adding to cart") {
+                            Task { await model.proposeAddingToSelectedHouseholdCart(product.id) }
                         }
                         .font(.subheadline.weight(.semibold))
                     }
@@ -161,6 +162,47 @@ struct ReferenceAppView: View {
             Text("Resets fictional pantry, cart, and purchase history state to the deterministic demo data.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var cartProposalSection: some View {
+        if let proposal = model.cartProposal {
+            Section("Cart Proposal") {
+                Text(proposal.reason)
+                    .font(.headline)
+
+                Text("Nothing changes until you approve this proposal.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                if let error = model.cartProposalError {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+
+                contextList(title: "Proposed cart", items: proposal.proposedCart) { item in
+                    "\(model.productName(for: item.productID)) ×\(item.quantity)"
+                }
+
+                HStack {
+                    Button("Decline") {
+                        Task { await model.declineCartProposal() }
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("Approve cart changes") {
+                        Task { await model.approveCartProposal() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+        } else if let error = model.cartProposalError {
+            Section("Cart Proposal") {
+                Text(error)
+                    .foregroundStyle(.red)
+            }
         }
     }
 

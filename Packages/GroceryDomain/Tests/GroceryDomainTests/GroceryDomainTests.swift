@@ -56,4 +56,22 @@ struct GroceryDomainTests {
         #expect(household.pantry[0].quantity == 1)
         #expect(household.cart[0].quantity == 1)
     }
+
+    @Test func cartProposalDescribesAChangeWithoutChangingTheCart() {
+        let lentils = ProductID("lentils")
+        let originalCart = [CartItem(productID: lentils, quantity: 1)]
+        let proposedCart = [CartItem(productID: lentils, quantity: 2)]
+        let proposal = CartProposal(
+            householdID: .budgetFamily,
+            originalCart: originalCart,
+            proposedCart: proposedCart,
+            reason: "Add one more package of Green lentils."
+        )
+
+        #expect(proposal.householdID == .budgetFamily)
+        #expect(proposal.originalCart == originalCart)
+        #expect(proposal.proposedCart == proposedCart)
+        #expect(proposal.reason == "Add one more package of Green lentils.")
+        #expect(originalCart == [CartItem(productID: lentils, quantity: 1)])
+    }
 }

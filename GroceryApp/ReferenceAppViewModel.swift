@@ -5,6 +5,8 @@ import GroceryDomain
 @MainActor
 final class ReferenceAppViewModel: ObservableObject {
     @Published private(set) var modelRun: ModelRun?
+    @Published private(set) var cartProposal: CartProposal?
+    @Published private(set) var cartProposalError: String?
     @Published private(set) var households: [DemoHousehold] = []
     @Published private(set) var catalogResults: [CatalogProduct] = []
     @Published private(set) var isLoaded = false
@@ -43,6 +45,8 @@ final class ReferenceAppViewModel: ObservableObject {
     func selectHousehold(_ id: DemoHouseholdID) {
         guard households.contains(where: { $0.id == id }) else { return }
         selectedHouseholdID = id
+        cartProposal = nil
+        cartProposalError = nil
     }
 
     func searchCatalog(_ text: String) {
@@ -54,25 +58,52 @@ final class ReferenceAppViewModel: ObservableObject {
         catalog.product(for: id)?.name ?? id.rawValue
     }
 
-    func addToSelectedHouseholdCart(_ productID: ProductID) async {
+    func proposeAddingToSelectedHouseholdCart(_ productID: ProductID) async {
         guard var household = await householdStore.household(for: selectedHouseholdID) else { return }
+        guard let product = catalog.product(for: productID) else { return }
+        let originalCart = household.cart
         if let index = household.cart.firstIndex(where: { $0.productID == productID }) {
             let item = household.cart[index]
             household.cart[index] = CartItem(productID: item.productID, quantity: item.quantity + 1)
         } else {
             household.cart.append(CartItem(productID: productID, quantity: 1))
         }
-        await householdStore.replaceCart(for: selectedHouseholdID, with: household.cart)
-        await load()
+        cartProposalError = nil
+        cartProposal = CartProposal(
+            householdID: selectedHouseholdID,
+            originalCart: originalCart,
+            proposedCart: household.cart,
+            reason: "Add one \(product.name) to the cart."
+        )
+    }
+
+    func approveCartProposal() async {
+        guard let proposal = cartProposal else { return }
+        if await householdStore.apply(proposal) {
+            cartProposal = nil
+            cartProposalError = nil
+            await load()
+        } else {
+            cartProposalError = "The cart changed before this proposal was approved. Review it and try again."
+        }
+    }
+
+    func declineCartProposal() async {
+        cartProposal = nil
+        cartProposalError = nil
     }
 
     func resetSelectedHousehold() async {
         await householdStore.reset(selectedHouseholdID)
+        cartProposal = nil
+        cartProposalError = nil
         await load()
     }
 
     func resetAllHouseholds() async {
         await householdStore.resetAll()
+        cartProposal = nil
+        cartProposalError = nil
         await load()
     }
 

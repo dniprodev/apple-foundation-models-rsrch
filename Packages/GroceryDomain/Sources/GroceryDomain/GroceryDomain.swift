@@ -88,6 +88,30 @@ public struct CartItem: Sendable, Codable, Equatable {
     }
 }
 
+public struct CartProposal: Sendable, Codable, Equatable, Identifiable {
+    public let householdID: DemoHouseholdID
+    public let originalCart: [CartItem]
+    public let proposedCart: [CartItem]
+    public let reason: String
+
+    public var id: String {
+        "\(householdID.rawValue):\(proposedCart.map { "\($0.productID.rawValue)=\($0.quantity)" }.joined(separator: ","))"
+    }
+
+    public init(
+        householdID: DemoHouseholdID,
+        originalCart: [CartItem],
+        proposedCart: [CartItem],
+        reason: String
+    ) {
+        precondition(!reason.isEmpty, "Cart proposals require a reason.")
+        self.householdID = householdID
+        self.originalCart = originalCart
+        self.proposedCart = proposedCart
+        self.reason = reason
+    }
+}
+
 public struct DemoHousehold: Identifiable, Sendable, Codable, Equatable {
     public let id: DemoHouseholdID
     public let name: String
@@ -125,7 +149,7 @@ public struct DemoHousehold: Identifiable, Sendable, Codable, Equatable {
 public protocol DemoHouseholdRepository: Sendable {
     func households() async -> [DemoHousehold]
     func household(for id: DemoHouseholdID) async -> DemoHousehold?
-    func replaceCart(for id: DemoHouseholdID, with cart: [CartItem]) async
+    func apply(_ proposal: CartProposal) async -> Bool
     func reset(_ id: DemoHouseholdID) async
     func resetAll() async
 }

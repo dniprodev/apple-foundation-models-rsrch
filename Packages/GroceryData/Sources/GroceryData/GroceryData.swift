@@ -162,11 +162,17 @@ public actor DemoHouseholdStore: DemoHouseholdRepository {
         currentHouseholds[id]
     }
 
-    public func replaceCart(for id: DemoHouseholdID, with cart: [CartItem]) {
-        precondition(cart.allSatisfy { catalogProductIDs.contains($0.productID) }, "Cart items must reference catalog products.")
-        guard var household = currentHouseholds[id] else { return }
-        household.cart = cart
-        currentHouseholds[id] = household
+    public func apply(_ proposal: CartProposal) -> Bool {
+        guard var household = currentHouseholds[proposal.householdID],
+              household.cart == proposal.originalCart,
+              proposal.proposedCart.allSatisfy({ catalogProductIDs.contains($0.productID) })
+        else {
+            return false
+        }
+
+        household.cart = proposal.proposedCart
+        currentHouseholds[proposal.householdID] = household
+        return true
     }
 
     public func reset(_ id: DemoHouseholdID) {
