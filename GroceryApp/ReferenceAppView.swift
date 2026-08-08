@@ -11,6 +11,7 @@ struct ReferenceAppView: View {
                 if model.isLoaded {
                     List {
                         householdSection
+                        strategySection
                         catalogSection
                         assistantSection
                         cartProposalSection
@@ -88,13 +89,57 @@ struct ReferenceAppView: View {
         }
     }
 
+    private var strategySection: some View {
+        Section("Model Strategy") {
+            Picker("Strategy", selection: $model.selectedStrategy) {
+                Text("Local-only").tag(ModelStrategy.localOnly)
+                Text("Hybrid").tag(ModelStrategy.hybrid)
+            }
+
+            if model.selectedStrategy == .hybrid {
+                Text(
+                    model.claudeCredentialConfigured
+                        ? "Claude credential is stored in Keychain."
+                        : "Hybrid assistance needs a Claude credential."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+                SecureField("Claude API key", text: $model.claudeCredentialInput)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+
+                HStack {
+                    Button("Save credential") {
+                        Task { await model.saveClaudeCredential() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.claudeCredentialInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    if model.claudeCredentialConfigured {
+                        Button("Remove", role: .destructive) {
+                            Task { await model.removeClaudeCredential() }
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+                if let error = model.claudeCredentialError {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
     private var assistantSection: some View {
-        Section("Local Assistant") {
+        Section("Grocery Assistant") {
             TextField("Ask about a product", text: $model.requestText)
                 .submitLabel(.search)
                 .onSubmit { submit() }
 
-            Button("Ask the local assistant", action: submit)
+            Button("Ask the assistant", action: submit)
                 .buttonStyle(.borderedProminent)
 
             if let run = model.modelRun {
@@ -121,7 +166,7 @@ struct ReferenceAppView: View {
                         }
                     }
 
-                    DisclosureGroup("Local Model Trace") {
+                    DisclosureGroup("Model Trace") {
                         LabeledContent("Strategy", value: run.trace.strategy.rawValue)
                         LabeledContent("Provider", value: run.trace.provider.rawValue)
                         LabeledContent("Intent", value: run.trace.intentID)
@@ -139,9 +184,16 @@ struct ReferenceAppView: View {
                         if let error = run.trace.error {
                             LabeledContent("Error", value: error)
                         }
-                        Text("Local-only run: no remote context view or remote transport was created.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        if let remoteContextView = run.trace.remoteContextView {
+                            Text("Remote Context View")
+                                .font(.caption.weight(.semibold))
+                            Text(remoteContextView)
+                                .font(.footnote)
+                        } else if run.trace.strategy == .localOnly {
+                            Text("Local-only run: no remote context view or remote transport was created.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .padding(.vertical, 4)

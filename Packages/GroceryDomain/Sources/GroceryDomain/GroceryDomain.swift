@@ -166,10 +166,60 @@ public struct GroceryAnswer: Sendable, Equatable {
 
 public enum ModelStrategy: String, Sendable, Codable, Equatable {
     case localOnly = "local-only"
+    case hybrid
 }
 
 public enum ModelProvider: String, Sendable, Codable, Equatable {
     case appleOnDevice = "apple-on-device"
+    case claude
+}
+
+public enum RemoteProviderState: String, Sendable, Codable, Equatable {
+    case ready
+    case notConfigured = "not-configured"
+    case unavailable
+}
+
+public struct RemoteProviderResponse: Sendable, Equatable {
+    public let answer: GroceryAnswer
+    public let events: [ModelRunEvent]
+    public let tools: [String]
+    public let remoteContextView: String?
+
+    public init(
+        answer: GroceryAnswer,
+        events: [ModelRunEvent] = [],
+        tools: [String] = [],
+        remoteContextView: String? = nil
+    ) {
+        self.answer = answer
+        self.events = events
+        self.tools = tools
+        self.remoteContextView = remoteContextView
+    }
+}
+
+public protocol RemoteGroceryProvider: Sendable {
+    var provider: ModelProvider { get }
+    func availability() async -> RemoteProviderState
+    func respond(
+        to request: GroceryRequest,
+        household: DemoHousehold?
+    ) async throws -> RemoteProviderResponse
+}
+
+public protocol ClaudeCredentialStore: Sendable {
+    func hasCredential() async -> Bool
+    /// Reads the secret only for immediate provider authentication. Callers
+    /// must never persist, display, or include this value in trace data.
+    func credential() async -> String?
+    func save(apiKey: String) async throws
+    func remove() async throws
+}
+
+public enum ClaudeCredentialStoreError: Error, Sendable, Equatable {
+    case invalidCredential
+    case keychainFailure(status: Int32)
 }
 
 public enum ModelRunEventKind: String, Sendable, Codable, Equatable {
@@ -200,6 +250,7 @@ public struct ModelTrace: Sendable, Codable, Equatable {
     public let toolEvents: [ModelRunEvent]
     public let durationMilliseconds: Int?
     public let error: String?
+    public let remoteContextView: String?
 
     public init(
         strategy: ModelStrategy,
@@ -209,7 +260,8 @@ public struct ModelTrace: Sendable, Codable, Equatable {
         tools: [String],
         toolEvents: [ModelRunEvent] = [],
         durationMilliseconds: Int? = nil,
-        error: String? = nil
+        error: String? = nil,
+        remoteContextView: String? = nil
     ) {
         self.strategy = strategy
         self.provider = provider
@@ -219,10 +271,8 @@ public struct ModelTrace: Sendable, Codable, Equatable {
         self.toolEvents = toolEvents.filter { $0.kind == .toolCall || $0.kind == .toolOutput }
         self.durationMilliseconds = durationMilliseconds
         self.error = error
+        self.remoteContextView = remoteContextView
     }
-
-    /// Local-only runs never construct a remote disclosure payload.
-    public var remoteContextView: String? { nil }
 }
 
 public struct ModelRun: Sendable, Equatable {
@@ -284,16 +334,22 @@ public extension GroceryAssistant {
 
 public struct AppDependencies: Sendable {
     public let assistant: any GroceryAssistant
+    public let hybridAssistant: (any GroceryAssistant)?
     public let catalog: any ProductCatalog
     public let householdStore: any DemoHouseholdRepository
+    public let claudeCredentialStore: (any ClaudeCredentialStore)?
 
     public init(
         assistant: any GroceryAssistant,
         catalog: any ProductCatalog,
-        householdStore: any DemoHouseholdRepository
+        householdStore: any DemoHouseholdRepository,
+        hybridAssistant: (any GroceryAssistant)? = nil,
+        claudeCredentialStore: (any ClaudeCredentialStore)? = nil
     ) {
         self.assistant = assistant
+        self.hybridAssistant = hybridAssistant
         self.catalog = catalog
         self.householdStore = householdStore
+        self.claudeCredentialStore = claudeCredentialStore
     }
 }

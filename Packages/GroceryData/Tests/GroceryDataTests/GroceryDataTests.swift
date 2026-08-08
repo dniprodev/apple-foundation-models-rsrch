@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import GroceryDomain
 @testable import GroceryData
@@ -109,5 +110,29 @@ struct GroceryDataTests {
 
         #expect(!(await store.apply(proposal)))
         #expect(await store.household(for: .budgetFamily)?.cart == originalCart)
+    }
+
+    @Test func keychainCredentialStorePersistsOnlyCredentialPresence() async throws {
+        let store = KeychainClaudeCredentialStore(
+            service: "GroceryDataTests",
+            account: "claude-\(UUID().uuidString)"
+        )
+
+        #expect(await store.hasCredential() == false)
+        try await store.save(apiKey: "test-key")
+        #expect(await store.hasCredential())
+        try await store.remove()
+        #expect(await store.hasCredential() == false)
+    }
+
+    @Test func keychainCredentialStoreRejectsBlankCredentials() async {
+        let store = KeychainClaudeCredentialStore(
+            service: "GroceryDataTests",
+            account: "blank-\(UUID().uuidString)"
+        )
+
+        await #expect(throws: ClaudeCredentialStoreError.invalidCredential) {
+            try await store.save(apiKey: " \n\t")
+        }
     }
 }

@@ -10,18 +10,26 @@ final class ReferenceAppViewModel: ObservableObject {
     @Published private(set) var households: [DemoHousehold] = []
     @Published private(set) var catalogResults: [CatalogProduct] = []
     @Published private(set) var isLoaded = false
+    @Published private(set) var claudeCredentialConfigured = false
+    @Published private(set) var claudeCredentialError: String?
     @Published var requestText = ""
     @Published var catalogQuery = ""
+    @Published var claudeCredentialInput = ""
+    @Published var selectedStrategy: ModelStrategy = .localOnly
     @Published private(set) var selectedHouseholdID: DemoHouseholdID = .budgetFamily
 
-    private let assistant: any GroceryAssistant
+    private let localAssistant: any GroceryAssistant
+    private let hybridAssistant: (any GroceryAssistant)?
     private let catalog: any ProductCatalog
     private let householdStore: any DemoHouseholdRepository
+    private let claudeCredentialStore: (any ClaudeCredentialStore)?
 
     init(dependencies: AppDependencies) {
-        assistant = dependencies.assistant
+        localAssistant = dependencies.assistant
+        hybridAssistant = dependencies.hybridAssistant
         catalog = dependencies.catalog
         householdStore = dependencies.householdStore
+        claudeCredentialStore = dependencies.claudeCredentialStore
     }
 
     static func makeDemo() -> ReferenceAppViewModel {
@@ -39,7 +47,35 @@ final class ReferenceAppViewModel: ObservableObject {
         if !households.contains(where: { $0.id == selectedHouseholdID }) {
             selectedHouseholdID = households.first?.id ?? .budgetFamily
         }
+        await refreshClaudeCredentialState()
         isLoaded = true
+    }
+
+    func refreshClaudeCredentialState() async {
+        claudeCredentialConfigured = await claudeCredentialStore?.hasCredential() ?? false
+    }
+
+    func saveClaudeCredential() async {
+        guard let claudeCredentialStore else { return }
+        claudeCredentialError = nil
+        do {
+            try await claudeCredentialStore.save(apiKey: claudeCredentialInput)
+            claudeCredentialInput = ""
+            await refreshClaudeCredentialState()
+        } catch {
+            claudeCredentialError = "The Claude credential could not be saved."
+        }
+    }
+
+    func removeClaudeCredential() async {
+        guard let claudeCredentialStore else { return }
+        claudeCredentialError = nil
+        do {
+            try await claudeCredentialStore.remove()
+            await refreshClaudeCredentialState()
+        } catch {
+            claudeCredentialError = "The Claude credential could not be removed."
+        }
     }
 
     func selectHousehold(_ id: DemoHouseholdID) {
@@ -112,6 +148,26 @@ final class ReferenceAppViewModel: ObservableObject {
         guard !trimmed.isEmpty else { return }
         requestText = trimmed
         let household = await householdStore.household(for: selectedHouseholdID)
+        let assistant = selectedStrategy == .hybrid ? hybridAssistant : localAssistant
+        guard let assistant else {
+            modelRun = ModelRun(
+                request: GroceryRequest(text: trimmed),
+                answer: GroceryAnswer(text: "Hybrid assistance is not available in this build."),
+                events: [
+                    ModelRunEvent(kind: .error, label: "hybrid-unavailable", content: "Hybrid assistance is not available in this build."),
+                    ModelRunEvent(kind: .finalAnswer, label: "answer", content: "Hybrid assistance is not available in this build.")
+                ],
+                trace: ModelTrace(
+                    strategy: .hybrid,
+                    provider: .claude,
+                    householdID: household?.id,
+                    intentID: "catalog-and-household",
+                    tools: [],
+                    error: "hybrid-unavailable"
+                )
+            )
+            return
+        }
         modelRun = await assistant.answer(
             for: GroceryRequest(text: trimmed),
             household: household
