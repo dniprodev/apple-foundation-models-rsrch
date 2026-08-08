@@ -3,8 +3,7 @@ import GroceryDomain
 public protocol ClaudeResponder: Sendable {
     func availability() async -> RemoteProviderState
     func respond(
-        to request: GroceryRequest,
-        household: DemoHousehold?,
+        to invocation: RemoteGroceryInvocation,
         apiKey: String
     ) async throws -> RemoteProviderResponse
 }
@@ -19,8 +18,7 @@ public struct UnavailableClaudeResponder: ClaudeResponder, Sendable {
     public func availability() async -> RemoteProviderState { .unavailable }
 
     public func respond(
-        to request: GroceryRequest,
-        household: DemoHousehold?,
+        to invocation: RemoteGroceryInvocation,
         apiKey: String
     ) async throws -> RemoteProviderResponse {
         throw ClaudeProviderError.notConfigured
@@ -52,12 +50,11 @@ public struct ClaudeRemoteProvider: RemoteGroceryProvider, Sendable {
     }
 
     public func respond(
-        to request: GroceryRequest,
-        household: DemoHousehold?
+        to invocation: RemoteGroceryInvocation
     ) async throws -> RemoteProviderResponse {
         guard let apiKey = await credentialStore.credential() else {
             throw ClaudeProviderError.notConfigured
         }
-        return try await responder.respond(to: request, household: household, apiKey: apiKey)
+        return try await responder.respond(to: invocation, apiKey: apiKey)
     }
 }

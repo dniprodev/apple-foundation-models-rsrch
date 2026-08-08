@@ -16,7 +16,10 @@ public enum GroceryAppComposition {
             credentialStore: claudeCredentialStore,
             responder: claudeResponder
         )
-        let hybridAssistant = HybridGroceryAssistant(provider: claudeProvider)
+        let hybridAssistant = HybridGroceryAssistant(
+            localAssistant: localAssistant,
+            provider: claudeProvider
+        )
         let householdStore = DemoHouseholdStore(catalogProducts: catalog.products)
         return AppDependencies(
             assistant: localAssistant,

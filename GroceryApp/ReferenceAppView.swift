@@ -171,6 +171,22 @@ struct ReferenceAppView: View {
                         LabeledContent("Provider", value: run.trace.provider.rawValue)
                         LabeledContent("Intent", value: run.trace.intentID)
                         LabeledContent("Tools", value: run.trace.tools.joined(separator: ", "))
+                        if let pattern = run.trace.orchestrationPattern {
+                            LabeledContent("Orchestration", value: pattern.rawValue)
+                        }
+                        if !run.trace.activeProfiles.isEmpty {
+                            LabeledContent(
+                                "Profiles",
+                                value: run.trace.activeProfiles.map(\.rawValue).joined(separator: " → ")
+                            )
+                        }
+                        ForEach(Array(run.trace.profileTransitions.enumerated()), id: \.offset) { _, transition in
+                            Text("Profile transition: \(transition.from.rawValue) → \(transition.to.rawValue)")
+                                .font(.footnote)
+                        }
+                        if let finalAnswerProfile = run.trace.finalAnswerProfile {
+                            LabeledContent("Final answer owner", value: finalAnswerProfile.rawValue)
+                        }
                         ForEach(Array(run.trace.toolEvents.enumerated()), id: \.offset) { _, event in
                             Text("\(event.label): \(event.content)")
                                 .font(.footnote)
@@ -183,6 +199,11 @@ struct ReferenceAppView: View {
                         }
                         if let error = run.trace.error {
                             LabeledContent("Error", value: error)
+                        }
+                        ForEach(run.trace.privacyConcerns, id: \.self) { concern in
+                            Text("Privacy concern: \(concern)")
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
                         }
                         if let remoteContextView = run.trace.remoteContextView {
                             Text("Remote Context View")

@@ -1,4 +1,6 @@
-public struct GroceryRequest: Sendable, Equatable {
+import Foundation
+
+public struct GroceryRequest: Sendable, Codable, Equatable {
     public let text: String
 
     public init(text: String) {
@@ -180,22 +182,136 @@ public enum RemoteProviderState: String, Sendable, Codable, Equatable {
     case unavailable
 }
 
+public enum OrchestrationPattern: String, Sendable, Codable, Equatable {
+    case batonPass = "baton-pass"
+    case phoneAFriend = "phone-a-friend"
+}
+
+public enum ModelProfileID: String, Sendable, Codable, Equatable {
+    case localGrocery = "local-grocery"
+    case claudeGrocery = "claude-grocery"
+}
+
+public struct ModelProfileTransition: Sendable, Codable, Equatable {
+    public let from: ModelProfileID
+    public let to: ModelProfileID
+
+    public init(from: ModelProfileID, to: ModelProfileID) {
+        self.from = from
+        self.to = to
+    }
+}
+
+public struct RemoteHistoryEntry: Sendable, Codable, Equatable {
+    public enum Role: String, Sendable, Codable, Equatable {
+        case toolCall = "tool-call"
+        case toolOutput = "tool-output"
+        case assistant
+    }
+
+    public let role: Role
+    public let label: String
+    public let content: String
+
+    public init(role: Role, label: String, content: String) {
+        self.role = role
+        self.label = label
+        self.content = content
+    }
+}
+
+/// The exact semantic context the app intends to disclose to a remote model.
+/// Rendering is deterministic so the trace can be compared with the provider
+/// invocation captured by a test transport.
+public struct RemoteContextView: Sendable, Codable, Equatable {
+    public let pattern: OrchestrationPattern
+    public let instructions: String
+    public let prompt: String
+    public let sharedHistory: [RemoteHistoryEntry]
+    public let toolDefinitions: [String]
+    public let toolOutputs: [RemoteHistoryEntry]
+    public let selectedOptions: [String]
+    public let attachments: [String]
+    public let disclosureFacts: [String]
+    public let privacyConcerns: [String]
+
+    public init(
+        pattern: OrchestrationPattern,
+        instructions: String,
+        prompt: String,
+        sharedHistory: [RemoteHistoryEntry],
+        toolDefinitions: [String],
+        toolOutputs: [RemoteHistoryEntry] = [],
+        selectedOptions: [String] = [],
+        attachments: [String] = [],
+        disclosureFacts: [String] = [],
+        privacyConcerns: [String]
+    ) {
+        self.pattern = pattern
+        self.instructions = instructions
+        self.prompt = prompt
+        self.sharedHistory = sharedHistory
+        self.toolDefinitions = toolDefinitions
+        self.toolOutputs = toolOutputs
+        self.selectedOptions = selectedOptions
+        self.attachments = attachments
+        self.disclosureFacts = disclosureFacts
+        self.privacyConcerns = privacyConcerns
+    }
+
+    public var rendered: String {
+        var lines = [
+            "Pattern: \(pattern.rawValue)",
+            "Instructions: \(instructions)",
+            "Prompt: \(prompt)",
+            "Shared history:"
+        ]
+        lines += sharedHistory.map { "- [\($0.role.rawValue)] \($0.label): \($0.content)" }
+        lines.append("Tool definitions: \(toolDefinitions.joined(separator: ", "))")
+        lines.append("Tool outputs:")
+        lines += toolOutputs.map { "- \($0.label): \($0.content)" }
+        lines.append("Selected options: \(selectedOptions.joined(separator: ", "))")
+        lines.append("Attachments: \(attachments.isEmpty ? "none" : attachments.joined(separator: ", "))")
+        lines.append("Disclosure facts:")
+        lines += disclosureFacts.map { "- \($0)" }
+        lines.append("Privacy concerns:")
+        lines += privacyConcerns.map { "- \($0)" }
+        return lines.joined(separator: "\n")
+    }
+}
+
+public struct RemoteGroceryInvocation: Sendable, Codable, Equatable {
+    public let request: GroceryRequest
+    public let contextView: RemoteContextView
+    public let correlationID: String
+    public let remoteContextID: String
+
+    public init(
+        request: GroceryRequest,
+        contextView: RemoteContextView,
+        correlationID: String = UUID().uuidString,
+        remoteContextID: String = UUID().uuidString
+    ) {
+        self.request = request
+        self.contextView = contextView
+        self.correlationID = correlationID
+        self.remoteContextID = remoteContextID
+    }
+}
+
 public struct RemoteProviderResponse: Sendable, Equatable {
     public let answer: GroceryAnswer
     public let events: [ModelRunEvent]
     public let tools: [String]
-    public let remoteContextView: String?
 
     public init(
         answer: GroceryAnswer,
         events: [ModelRunEvent] = [],
-        tools: [String] = [],
-        remoteContextView: String? = nil
+        tools: [String] = []
     ) {
         self.answer = answer
         self.events = events
         self.tools = tools
-        self.remoteContextView = remoteContextView
     }
 }
 
@@ -203,8 +319,7 @@ public protocol RemoteGroceryProvider: Sendable {
     var provider: ModelProvider { get }
     func availability() async -> RemoteProviderState
     func respond(
-        to request: GroceryRequest,
-        household: DemoHousehold?
+        to invocation: RemoteGroceryInvocation
     ) async throws -> RemoteProviderResponse
 }
 
@@ -225,6 +340,7 @@ public enum ClaudeCredentialStoreError: Error, Sendable, Equatable {
 public enum ModelRunEventKind: String, Sendable, Codable, Equatable {
     case toolCall = "tool-call"
     case toolOutput = "tool-output"
+    case modelOutput = "model-output"
     case finalAnswer = "final-answer"
     case error
 }
@@ -251,6 +367,13 @@ public struct ModelTrace: Sendable, Codable, Equatable {
     public let durationMilliseconds: Int?
     public let error: String?
     public let remoteContextView: String?
+    public let correlationID: String?
+    public let remoteContextID: String?
+    public let orchestrationPattern: OrchestrationPattern?
+    public let activeProfiles: [ModelProfileID]
+    public let profileTransitions: [ModelProfileTransition]
+    public let finalAnswerProfile: ModelProfileID?
+    public let privacyConcerns: [String]
 
     public init(
         strategy: ModelStrategy,
@@ -261,7 +384,14 @@ public struct ModelTrace: Sendable, Codable, Equatable {
         toolEvents: [ModelRunEvent] = [],
         durationMilliseconds: Int? = nil,
         error: String? = nil,
-        remoteContextView: String? = nil
+        remoteContextView: String? = nil,
+        correlationID: String? = nil,
+        remoteContextID: String? = nil,
+        orchestrationPattern: OrchestrationPattern? = nil,
+        activeProfiles: [ModelProfileID] = [],
+        profileTransitions: [ModelProfileTransition] = [],
+        finalAnswerProfile: ModelProfileID? = nil,
+        privacyConcerns: [String] = []
     ) {
         self.strategy = strategy
         self.provider = provider
@@ -272,6 +402,13 @@ public struct ModelTrace: Sendable, Codable, Equatable {
         self.durationMilliseconds = durationMilliseconds
         self.error = error
         self.remoteContextView = remoteContextView
+        self.correlationID = correlationID
+        self.remoteContextID = remoteContextID
+        self.orchestrationPattern = orchestrationPattern
+        self.activeProfiles = activeProfiles
+        self.profileTransitions = profileTransitions
+        self.finalAnswerProfile = finalAnswerProfile
+        self.privacyConcerns = privacyConcerns
     }
 }
 
