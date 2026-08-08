@@ -1,3 +1,4 @@
+import Foundation
 import GroceryDomain
 
 public struct DemoCatalog: ProductCatalog, Sendable {
@@ -9,8 +10,15 @@ public struct DemoCatalog: ProductCatalog, Sendable {
 
     public func search(matching text: String) -> [CatalogProduct] {
         let query = text.lowercased()
+        let terms = query
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 4 }
+
+        guard !terms.isEmpty else { return [] }
+
         return products.filter {
-            $0.name.lowercased().contains(query) || $0.detail.lowercased().contains(query)
+            let searchableText = "\($0.name) \($0.detail)".lowercased()
+            return terms.contains(where: searchableText.contains)
         }
     }
 

@@ -10,6 +10,12 @@ struct GroceryDataTests {
         #expect(catalog.search(matching: "weeknight").map(\.name) == ["Whole-wheat pasta"])
     }
 
+    @Test func demoCatalogFindsEvidenceInsideNaturalLanguageRequests() {
+        let catalog = DemoCatalog()
+
+        #expect(catalog.search(matching: "What can I make with lentils?").map(\.name) == ["Green lentils"])
+    }
+
     @Test func householdGenerationIsDeterministicAndUsesCatalogProducts() {
         let products = [
             CatalogProduct(id: ProductID("lentils"), name: "Green lentils", detail: "Pantry staple"),

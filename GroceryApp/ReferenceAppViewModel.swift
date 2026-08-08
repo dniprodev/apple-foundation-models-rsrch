@@ -23,7 +23,9 @@ final class ReferenceAppViewModel: ObservableObject {
     }
 
     static func makeDemo() -> ReferenceAppViewModel {
-        ReferenceAppViewModel(dependencies: GroceryAppComposition.makeAppDependencies())
+        ReferenceAppViewModel(
+            dependencies: GroceryAppComposition.makeAppDependencies(useOnDeviceModel: false)
+        )
     }
 
     var selectedHousehold: DemoHousehold? {
@@ -78,6 +80,10 @@ final class ReferenceAppViewModel: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         requestText = trimmed
-        modelRun = await assistant.answer(for: GroceryRequest(text: trimmed))
+        let household = await householdStore.household(for: selectedHouseholdID)
+        modelRun = await assistant.answer(
+            for: GroceryRequest(text: trimmed),
+            household: household
+        )
     }
 }

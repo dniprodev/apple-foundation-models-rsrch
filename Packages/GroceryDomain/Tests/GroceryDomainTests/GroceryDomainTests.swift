@@ -11,6 +11,32 @@ struct GroceryDomainTests {
         #expect(run.answer == answer)
     }
 
+    @Test func modelRunKeepsObservableEventsAndLocalTraceFactsInOrder() {
+        let request = GroceryRequest(text: "What can I make with lentils?")
+        let events = [
+            ModelRunEvent(kind: .toolCall, label: "search-catalog", content: "lentils"),
+            ModelRunEvent(kind: .toolOutput, label: "search-catalog", content: "Green lentils"),
+            ModelRunEvent(kind: .finalAnswer, label: "answer", content: "Try a lentil soup.")
+        ]
+        let trace = ModelTrace(
+            strategy: .localOnly,
+            provider: .appleOnDevice,
+            householdID: .budgetFamily,
+            intentID: "catalog-and-household",
+            tools: ["search-catalog", "household-context"],
+            toolEvents: events,
+            durationMilliseconds: 42
+        )
+        let run = ModelRun(request: request, answer: GroceryAnswer(text: "Try a lentil soup."), events: events, trace: trace)
+
+        #expect(run.events.map(\.kind) == [.toolCall, .toolOutput, .finalAnswer])
+        #expect(run.trace.strategy == .localOnly)
+        #expect(run.trace.householdID == .budgetFamily)
+        #expect(run.trace.tools == ["search-catalog", "household-context"])
+        #expect(run.trace.toolEvents.map(\.kind) == [.toolCall, .toolOutput])
+        #expect(run.trace.remoteContextView == nil)
+    }
+
     @Test func demoHouseholdCarriesFictionalGroceryContext() {
         let lentils = ProductID("lentils")
         let household = DemoHousehold(

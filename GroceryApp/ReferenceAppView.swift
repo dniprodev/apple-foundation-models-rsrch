@@ -105,6 +105,43 @@ struct ReferenceAppView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
+
+                    DisclosureGroup("Model Run") {
+                        Text("Request: \(run.request.text)")
+                            .font(.footnote)
+                        ForEach(Array(run.events.enumerated()), id: \.offset) { _, event in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(event.label)
+                                    .font(.caption.weight(.semibold))
+                                Text(event.content)
+                                    .font(.footnote)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+
+                    DisclosureGroup("Local Model Trace") {
+                        LabeledContent("Strategy", value: run.trace.strategy.rawValue)
+                        LabeledContent("Provider", value: run.trace.provider.rawValue)
+                        LabeledContent("Intent", value: run.trace.intentID)
+                        LabeledContent("Tools", value: run.trace.tools.joined(separator: ", "))
+                        ForEach(Array(run.trace.toolEvents.enumerated()), id: \.offset) { _, event in
+                            Text("\(event.label): \(event.content)")
+                                .font(.footnote)
+                        }
+                        if let householdID = run.trace.householdID {
+                            LabeledContent("Household", value: householdID.rawValue)
+                        }
+                        if let duration = run.trace.durationMilliseconds {
+                            LabeledContent("Duration", value: "\(duration) ms")
+                        }
+                        if let error = run.trace.error {
+                            LabeledContent("Error", value: error)
+                        }
+                        Text("Local-only run: no remote context view or remote transport was created.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.vertical, 4)
             }

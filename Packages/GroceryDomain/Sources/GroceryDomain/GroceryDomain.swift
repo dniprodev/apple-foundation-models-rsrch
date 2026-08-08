@@ -140,13 +140,89 @@ public struct GroceryAnswer: Sendable, Equatable {
     }
 }
 
+public enum ModelStrategy: String, Sendable, Codable, Equatable {
+    case localOnly = "local-only"
+}
+
+public enum ModelProvider: String, Sendable, Codable, Equatable {
+    case appleOnDevice = "apple-on-device"
+}
+
+public enum ModelRunEventKind: String, Sendable, Codable, Equatable {
+    case toolCall = "tool-call"
+    case toolOutput = "tool-output"
+    case finalAnswer = "final-answer"
+    case error
+}
+
+public struct ModelRunEvent: Sendable, Codable, Equatable {
+    public let kind: ModelRunEventKind
+    public let label: String
+    public let content: String
+
+    public init(kind: ModelRunEventKind, label: String, content: String) {
+        self.kind = kind
+        self.label = label
+        self.content = content
+    }
+}
+
+public struct ModelTrace: Sendable, Codable, Equatable {
+    public let strategy: ModelStrategy
+    public let provider: ModelProvider
+    public let householdID: DemoHouseholdID?
+    public let intentID: String
+    public let tools: [String]
+    public let toolEvents: [ModelRunEvent]
+    public let durationMilliseconds: Int?
+    public let error: String?
+
+    public init(
+        strategy: ModelStrategy,
+        provider: ModelProvider,
+        householdID: DemoHouseholdID?,
+        intentID: String,
+        tools: [String],
+        toolEvents: [ModelRunEvent] = [],
+        durationMilliseconds: Int? = nil,
+        error: String? = nil
+    ) {
+        self.strategy = strategy
+        self.provider = provider
+        self.householdID = householdID
+        self.intentID = intentID
+        self.tools = tools
+        self.toolEvents = toolEvents.filter { $0.kind == .toolCall || $0.kind == .toolOutput }
+        self.durationMilliseconds = durationMilliseconds
+        self.error = error
+    }
+
+    /// Local-only runs never construct a remote disclosure payload.
+    public var remoteContextView: String? { nil }
+}
+
 public struct ModelRun: Sendable, Equatable {
     public let request: GroceryRequest
     public let answer: GroceryAnswer
+    public let events: [ModelRunEvent]
+    public let trace: ModelTrace
 
-    public init(request: GroceryRequest, answer: GroceryAnswer) {
+    public init(
+        request: GroceryRequest,
+        answer: GroceryAnswer,
+        events: [ModelRunEvent] = [],
+        trace: ModelTrace = ModelTrace(
+            strategy: .localOnly,
+            provider: .appleOnDevice,
+            householdID: nil,
+            intentID: "unknown",
+            tools: []
+        )
+    ) {
         self.request = request
         self.answer = answer
+        self.events = events
+        self.trace = trace
     }
 }
 
@@ -173,7 +249,13 @@ public protocol ProductCatalog: Sendable {
 }
 
 public protocol GroceryAssistant: Sendable {
-    func answer(for request: GroceryRequest) async -> ModelRun
+    func answer(for request: GroceryRequest, household: DemoHousehold?) async -> ModelRun
+}
+
+public extension GroceryAssistant {
+    func answer(for request: GroceryRequest) async -> ModelRun {
+        await answer(for: request, household: nil)
+    }
 }
 
 public struct AppDependencies: Sendable {

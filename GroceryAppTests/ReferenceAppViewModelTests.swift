@@ -12,6 +12,17 @@ final class ReferenceAppViewModelTests: XCTestCase {
         XCTAssertEqual(model.modelRun?.answer.evidence, ["Green lentils"])
     }
 
+    func testSubmitPassesTheSelectedDemoHouseholdToTheLocalRun() async {
+        let model = ReferenceAppViewModel.makeDemo()
+
+        await model.load()
+        model.selectHousehold(.nutritionFocusedCouple)
+        await model.submit("lentils")
+
+        XCTAssertEqual(model.modelRun?.trace.householdID, .nutritionFocusedCouple)
+        XCTAssertNil(model.modelRun?.trace.remoteContextView)
+    }
+
     func testModelLoadsAllDemoHouseholdsAndTheirContext() async {
         let model = ReferenceAppViewModel.makeDemo()
 

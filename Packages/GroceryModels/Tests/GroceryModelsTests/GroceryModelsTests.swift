@@ -10,6 +10,30 @@ struct GroceryModelsTests {
         #expect(run.answer.text.contains("Green lentils"))
         #expect(run.answer.evidence == ["Green lentils"])
     }
+
+    @Test func localAssistantRecordsSelectedHouseholdAndToolActivity() async {
+        let catalog = TestCatalog(products: [CatalogProduct(name: "Green lentils", detail: "A pantry staple.")])
+        let household = DemoHousehold(
+            id: .lowWasteSoloShopper,
+            name: "Low-Waste Solo Shopper",
+            members: [],
+            weeklySpendingTargetCents: nil,
+            restrictions: [.vegetarian],
+            priorities: [.usePantryFirst],
+            purchaseHistory: [],
+            pantry: [],
+            cart: []
+        )
+
+        let run = await LocalGroceryAssistant(catalog: catalog).answer(
+            for: GroceryRequest(text: "lentils"),
+            household: household
+        )
+
+        #expect(run.trace.householdID == .lowWasteSoloShopper)
+        #expect(run.trace.strategy == .localOnly)
+        #expect(run.events.map(\.kind) == [.toolCall, .toolOutput, .finalAnswer])
+    }
 }
 
 private struct TestCatalog: ProductCatalog, Sendable {
