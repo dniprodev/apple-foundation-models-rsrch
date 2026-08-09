@@ -404,7 +404,8 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
     ) -> RemoteGroceryInvocation {
         let publicCatalogOutputs = localRun.events.compactMap { event -> RemoteHistoryEntry? in
             guard event.kind == .toolOutput,
-                  event.label == "search-catalog" || event.label == "public-catalog" else {
+                  event.label == LocalGroceryToolID.catalogSearch.rawValue
+                    || event.label == "public-catalog" else {
                 return nil
             }
             return RemoteHistoryEntry(role: .toolOutput, label: event.label, content: event.content)

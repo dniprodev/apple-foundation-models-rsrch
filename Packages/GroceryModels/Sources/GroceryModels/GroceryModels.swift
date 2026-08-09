@@ -8,15 +8,33 @@ public struct LocalGroceryAssistant: GroceryAssistant, Sendable {
     }
 
     public func answer(for request: GroceryRequest, household: DemoHousehold?) async -> ModelRun {
+        let plan = LocalGroceryPolicy.plan(for: request)
         let matches = catalog.search(matching: request.text)
-        let events = [
-            ModelRunEvent(kind: .toolCall, label: "search-catalog", content: request.text),
-            ModelRunEvent(
+        var events: [ModelRunEvent] = []
+        if plan.tools.contains(.householdContext) {
+            events.append(ModelRunEvent(
+                kind: .toolCall,
+                label: LocalGroceryToolID.householdContext.rawValue,
+                content: household?.id.rawValue ?? "none"
+            ))
+            events.append(ModelRunEvent(
                 kind: .toolOutput,
-                label: "search-catalog",
+                label: LocalGroceryToolID.householdContext.rawValue,
+                content: LocalHouseholdEvidence.render(household)
+            ))
+        }
+        if plan.tools.contains(.catalogSearch) {
+            events.append(ModelRunEvent(
+                kind: .toolCall,
+                label: LocalGroceryToolID.catalogSearch.rawValue,
+                content: request.text
+            ))
+            events.append(ModelRunEvent(
+                kind: .toolOutput,
+                label: LocalGroceryToolID.catalogSearch.rawValue,
                 content: matches.map(\.name).joined(separator: ", ")
-            )
-        ]
+            ))
+        }
         let answer: GroceryAnswer
         if matches.isEmpty {
             answer = GroceryAnswer(
@@ -37,10 +55,17 @@ public struct LocalGroceryAssistant: GroceryAssistant, Sendable {
                 strategy: .localOnly,
                 provider: .appleOnDevice,
                 householdID: household?.id,
-                intentID: "catalog-and-household",
-                tools: ["search-catalog", "household-context"],
-                toolEvents: events
+                intentID: plan.intent.rawValue,
+                tools: plan.toolNames,
+                toolEvents: events,
+                activeProfiles: [plan.profile],
+                profileActivations: [plan.activation(
+                    selectedModel: .deterministicTestAssistant,
+                    ownsFinalAnswer: false
+                )],
+                finalAnswerProfile: nil
             )
         )
     }
+
 }

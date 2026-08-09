@@ -35,6 +35,76 @@ struct GroceryModelsTests {
         #expect(run.events.map(\.kind) == [.toolCall, .toolOutput, .finalAnswer])
     }
 
+    @Test func localPolicySelectsCatalogOnlyProductDiscoveryProfile() async {
+        let catalog = TestCatalog(products: [CatalogProduct(name: "Green lentils", detail: "A pantry staple.")])
+        let run = await LocalGroceryAssistant(catalog: catalog).answer(
+            for: GroceryRequest(text: "Find lentils")
+        )
+
+        #expect(run.trace.intentID == "product-discovery")
+        #expect(run.trace.tools == ["search-catalog"])
+        #expect(run.trace.profileActivations == [
+            ModelProfileActivation(
+                profile: .localProductDiscovery,
+                trigger: "application-state:product-discovery",
+                effectiveInstructions: [
+                    "Use only bundled catalog evidence and say when no matching product is available."
+                ],
+                tools: ["search-catalog"],
+                selectedModel: "deterministic-test-assistant",
+                ownsFinalAnswer: false
+            )
+        ])
+        #expect(run.trace.remoteContextView == nil)
+        #expect(run.trace.remoteSessionID == nil)
+    }
+
+    @Test func localPolicySelectsHouseholdPlanningProfileForPantryRequest() async {
+        let catalog = TestCatalog(products: [CatalogProduct(name: "Green lentils", detail: "A pantry staple.")])
+        let household = DemoHousehold(
+            id: .lowWasteSoloShopper,
+            name: "Low-Waste Solo Shopper",
+            members: [],
+            weeklySpendingTargetCents: nil,
+            restrictions: [.vegetarian],
+            priorities: [.usePantryFirst],
+            purchaseHistory: [],
+            pantry: [PantryItem(productID: ProductID("green-lentils"), quantity: 2)],
+            cart: []
+        )
+        let run = await LocalGroceryAssistant(catalog: catalog).answer(
+            for: GroceryRequest(text: "Plan a meal from my pantry"),
+            household: household
+        )
+
+        #expect(run.trace.intentID == "household-planning")
+        #expect(run.trace.activeProfiles == [.localHouseholdPlanning])
+        #expect(run.trace.tools == ["household-context", "search-catalog"])
+        #expect(run.trace.profileActivations.first?.effectiveInstructions == [
+            "Use the selected Demo Household's restrictions, priorities, pantry, and purchase evidence.",
+            "Use only bundled catalog evidence for product claims."
+        ])
+        #expect(run.trace.toolEvents.map(\.label).contains("household-context"))
+        #expect(run.trace.remoteContextView == nil)
+    }
+
+    @Test func localPolicySelectsNonMutatingCartReviewProfile() async {
+        let catalog = TestCatalog(products: [CatalogProduct(name: "Green lentils", detail: "A pantry staple.")])
+        let run = await LocalGroceryAssistant(catalog: catalog).answer(
+            for: GroceryRequest(text: "Review my cart")
+        )
+
+        #expect(run.trace.intentID == "cart-review")
+        #expect(run.trace.activeProfiles == [.localCartReview])
+        #expect(run.trace.profileActivations.first?.trigger == "application-state:cart-review")
+        #expect(run.trace.profileActivations.first?.effectiveInstructions.first ==
+            "Call household-context before reviewing the selected Demo Household's cart.")
+        #expect(run.trace.profileActivations.first?.tools == ["household-context"])
+        #expect(run.trace.toolEvents.map(\.label).contains("household-context"))
+        #expect(!run.trace.toolEvents.map(\.label).contains("search-catalog"))
+        #expect(run.trace.profileActivations.first?.ownsFinalAnswer == false)
+    }
+
     @Test func hybridAssistantExplainsWhenClaudeIsNotConfigured() async {
         let provider = TestRemoteProvider(state: .notConfigured)
         let assistant = HybridGroceryAssistant(

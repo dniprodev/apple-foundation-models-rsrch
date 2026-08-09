@@ -216,9 +216,38 @@ public enum OrchestrationPattern: String, Sendable, Codable, Equatable {
 }
 
 public enum ModelProfileID: String, Sendable, Codable, Equatable {
+    case localProductDiscovery = "local-product-discovery"
+    case localHouseholdPlanning = "local-household-planning"
+    case localCartReview = "local-cart-review"
+    case localCartRecommendation = "local-cart-recommendation"
     case localGrocery = "local-grocery"
     case claudeGrocery = "claude-grocery"
     case claudeChildGrocery = "claude-child-grocery"
+}
+
+public struct ModelProfileActivation: Sendable, Codable, Equatable {
+    public let profile: ModelProfileID
+    public let trigger: String
+    public let effectiveInstructions: [String]
+    public let tools: [String]
+    public let selectedModel: String
+    public let ownsFinalAnswer: Bool
+
+    public init(
+        profile: ModelProfileID,
+        trigger: String,
+        effectiveInstructions: [String],
+        tools: [String],
+        selectedModel: String,
+        ownsFinalAnswer: Bool
+    ) {
+        self.profile = profile
+        self.trigger = trigger
+        self.effectiveInstructions = effectiveInstructions
+        self.tools = tools
+        self.selectedModel = selectedModel
+        self.ownsFinalAnswer = ownsFinalAnswer
+    }
 }
 
 public struct ModelProfileTransition: Sendable, Codable, Equatable {
@@ -439,6 +468,7 @@ public struct ModelTrace: Sendable, Codable, Equatable {
     public let orchestrationPattern: OrchestrationPattern?
     public let activeProfiles: [ModelProfileID]
     public let profileTransitions: [ModelProfileTransition]
+    public let profileActivations: [ModelProfileActivation]
     public let finalAnswerProfile: ModelProfileID?
     public let privacyConcerns: [String]
 
@@ -459,6 +489,7 @@ public struct ModelTrace: Sendable, Codable, Equatable {
         orchestrationPattern: OrchestrationPattern? = nil,
         activeProfiles: [ModelProfileID] = [],
         profileTransitions: [ModelProfileTransition] = [],
+        profileActivations: [ModelProfileActivation] = [],
         finalAnswerProfile: ModelProfileID? = nil,
         privacyConcerns: [String] = []
     ) {
@@ -478,6 +509,7 @@ public struct ModelTrace: Sendable, Codable, Equatable {
         self.orchestrationPattern = orchestrationPattern
         self.activeProfiles = activeProfiles
         self.profileTransitions = profileTransitions
+        self.profileActivations = profileActivations
         self.finalAnswerProfile = finalAnswerProfile
         self.privacyConcerns = privacyConcerns
     }

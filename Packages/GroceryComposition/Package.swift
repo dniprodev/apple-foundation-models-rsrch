@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "GroceryComposition",
-    platforms: [.iOS(.v26), .macOS(.v26)],
+    platforms: [.iOS("27.0"), .macOS("27.0")],
     products: [.library(name: "GroceryComposition", type: .static, targets: ["GroceryComposition"])],
     dependencies: [
         .package(path: "../GroceryDomain"),

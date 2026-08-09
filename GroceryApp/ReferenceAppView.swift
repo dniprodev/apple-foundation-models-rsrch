@@ -240,6 +240,23 @@ struct ReferenceAppView: View {
                             Text("Profile transition: \(transition.from.rawValue) → \(transition.to.rawValue)")
                                 .font(.footnote)
                         }
+                        ForEach(Array(run.trace.profileActivations.enumerated()), id: \.offset) { _, activation in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Active profile: \(activation.profile.rawValue)")
+                                    .font(.caption.weight(.semibold))
+                                Text("Trigger: \(activation.trigger)")
+                                Text("Selected model: \(activation.selectedModel)")
+                                Text("Available tools: \(activation.tools.joined(separator: ", "))")
+                                Text(
+                                    "Final-answer responsibility: "
+                                        + (activation.ownsFinalAnswer ? activation.profile.rawValue : "app")
+                                )
+                                ForEach(activation.effectiveInstructions, id: \.self) { instruction in
+                                    Text("Instruction: \(instruction)")
+                                }
+                            }
+                            .font(.footnote)
+                        }
                         if let finalAnswerProfile = run.trace.finalAnswerProfile {
                             LabeledContent("Final answer owner", value: finalAnswerProfile.rawValue)
                         }
