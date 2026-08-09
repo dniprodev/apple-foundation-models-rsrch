@@ -3,7 +3,7 @@ Product data comes from:
   - Official Open Food Facts product records.
   - Official Open Prices price records.
   - Both are pinned to immutable Parquet revisions, filtered/joined offline, and emitted as a sorted, checksummed SQLite database with a provenance manifest.
-  - The initial target is a France/EUR-scale subset, roughly 3,000 products.
+  - The initial France/EUR Reference Dataset contains 500 quality-gated products; its manifest records the selection size and any source-constrained category shortfalls.
   - Open Food Facts API v3 is only an optional fallback for a specific product missing locally; successful results are cached. The core demo does not depend on the
     network.
 

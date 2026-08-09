@@ -5,6 +5,7 @@ import GRDB
 public enum ReferenceDatasetError: Error, Equatable, LocalizedError {
     case invalidManifest
     case artifactChecksumMismatch
+    case catalogContentMismatch
     case invalidDatabase
     case productCountMismatch
     case missingBundleResource(String)
@@ -15,6 +16,8 @@ public enum ReferenceDatasetError: Error, Equatable, LocalizedError {
             "The bundled Reference Dataset manifest is invalid."
         case .artifactChecksumMismatch:
             "The bundled Reference Dataset does not match its provenance manifest."
+        case .catalogContentMismatch:
+            "The installed Reference Dataset catalog does not match its provenance manifest."
         case .invalidDatabase:
             "The bundled Reference Dataset database is invalid."
         case .productCountMismatch:
@@ -77,6 +80,9 @@ public struct ReferenceDatasetInstaller: Sendable {
             throw ReferenceDatasetError.artifactChecksumMismatch
         }
         try Self.validateDatabase(databaseURL, expectedProductCount: manifest.selection.retainedProducts)
+        guard try Self.logicalSHA256(databaseURL) == manifest.artifact.logicalSHA256 else {
+            throw ReferenceDatasetError.catalogContentMismatch
+        }
 
         if FileManager.default.fileExists(atPath: installedDatabaseURL.path),
            let installedVersion = try? String(contentsOf: installationMarkerURL, encoding: .utf8),
@@ -85,6 +91,9 @@ public struct ReferenceDatasetInstaller: Sendable {
                 installedDatabaseURL,
                 expectedProductCount: manifest.selection.retainedProducts
             )
+            guard try Self.logicalSHA256(installedDatabaseURL) == manifest.artifact.logicalSHA256 else {
+                throw ReferenceDatasetError.catalogContentMismatch
+            }
             return installedDatabaseURL
         }
 
@@ -110,6 +119,53 @@ public struct ReferenceDatasetInstaller: Sendable {
             hasher.update(data: data)
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func logicalSHA256(_ url: URL) throws -> String {
+        do {
+            var configuration = Configuration()
+            configuration.readonly = true
+            let database = try DatabaseQueue(path: url.path, configuration: configuration)
+            return try database.read { db in
+                var hasher = SHA256()
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = .withoutEscapingSlashes
+                for table in [
+                    "products", "product_categories", "product_allergens", "price_observations"
+                ] {
+                    let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(\(table))")
+                        .map { row -> String in row["name"] }
+                    guard !columns.isEmpty else { throw ReferenceDatasetError.invalidDatabase }
+                    let order = columns.joined(separator: ",")
+                    for row in try Row.fetchAll(db, sql: "SELECT * FROM \(table) ORDER BY \(order)") {
+                        var json = "["
+                        for (index, column) in columns.enumerated() {
+                            if index > 0 { json.append(",") }
+                            let value: DatabaseValue = row[column]
+                            switch value.storage {
+                            case .null:
+                                json.append("null")
+                            case let .int64(number):
+                                json.append(String(number))
+                            case let .double(number):
+                                json.append(String(number))
+                            case let .string(string):
+                                json.append(String(decoding: try encoder.encode(string), as: UTF8.self))
+                            case .blob:
+                                throw ReferenceDatasetError.invalidDatabase
+                            }
+                        }
+                        json.append("]\n")
+                        hasher.update(data: Data(json.utf8))
+                    }
+                }
+                return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+            }
+        } catch let error as ReferenceDatasetError {
+            throw error
+        } catch {
+            throw ReferenceDatasetError.invalidDatabase
+        }
     }
 
     private static func validateDatabase(_ url: URL, expectedProductCount: Int) throws {
@@ -157,6 +213,26 @@ public struct ReferenceDatasetInstaller: Sendable {
                 ) ?? 0
                 guard orphanedFullTextRows == 0 else { return false }
 
+                let distinctFullTextProducts = try Int.fetchOne(
+                    db,
+                    sql: "SELECT count(DISTINCT code) FROM product_fts"
+                ) ?? 0
+                guard distinctFullTextProducts == productCount else { return false }
+
+                let mismatchedFullTextRows = try Int.fetchOne(
+                    db,
+                    sql: """
+                        SELECT count(*)
+                        FROM product_fts f
+                        JOIN products p ON p.code = f.code
+                        WHERE f.name IS NOT p.name
+                           OR f.brand IS NOT p.brand
+                           OR f.ingredients IS NOT p.ingredients
+                           OR f.category IS NOT p.primary_category
+                        """
+                ) ?? 0
+                guard mismatchedFullTextRows == 0 else { return false }
+
                 let searchProbe = try Row.fetchOne(
                     db,
                     sql: """
@@ -183,6 +259,12 @@ public struct ReferenceDatasetInstaller: Sendable {
 private struct Manifest: Decodable {
     struct Artifact: Decodable {
         let sha256: String
+        let logicalSHA256: String
+
+        enum CodingKeys: String, CodingKey {
+            case sha256
+            case logicalSHA256 = "logical_sha256"
+        }
     }
 
     struct Selection: Decodable {

@@ -157,6 +157,56 @@ struct GroceryDataTests {
         #expect(installedDate == preservedDate)
     }
 
+    @Test func laterLaunchRejectsModifiedInstalledCatalogContent() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("InstalledReferenceDatasetTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let resources = try BundledReferenceDataset.resources()
+        let installer = ReferenceDatasetInstaller(applicationSupportDirectory: root)
+        let installedURL = try installer.install(
+            database: resources.databaseURL,
+            manifest: resources.manifestURL
+        )
+        let database = try DatabaseQueue(path: installedURL.path)
+        try database.write { db in
+            try db.execute(
+                sql: "UPDATE products SET median_price = median_price + 1 WHERE code = (SELECT min(code) FROM products)"
+            )
+        }
+
+        #expect(throws: ReferenceDatasetError.catalogContentMismatch) {
+            try installer.install(
+                database: resources.databaseURL,
+                manifest: resources.manifestURL
+            )
+        }
+    }
+
+    @Test func laterLaunchRejectsModifiedInstalledSearchIndexContent() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("InstalledReferenceDatasetTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let resources = try BundledReferenceDataset.resources()
+        let installer = ReferenceDatasetInstaller(applicationSupportDirectory: root)
+        let installedURL = try installer.install(
+            database: resources.databaseURL,
+            manifest: resources.manifestURL
+        )
+        let database = try DatabaseQueue(path: installedURL.path)
+        try database.write { db in
+            try db.execute(
+                sql: "UPDATE product_fts SET name = name || ' modified' WHERE rowid = (SELECT min(rowid) FROM product_fts)"
+            )
+        }
+
+        #expect(throws: ReferenceDatasetError.invalidDatabase) {
+            try installer.install(
+                database: resources.databaseURL,
+                manifest: resources.manifestURL
+            )
+        }
+    }
+
     @Test func referenceDatasetInstallerRejectsAnArtifactChecksumMismatch() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("GroceryDataTests-\(UUID().uuidString)", isDirectory: true)
@@ -171,7 +221,10 @@ struct GroceryDataTests {
             {
               "builder_version": "1",
               "selection": { "retained_products": 3000 },
-              "artifact": { "sha256": "\(String(repeating: "0", count: 64))" }
+              "artifact": {
+                "sha256": "\(String(repeating: "0", count: 64))",
+                "logical_sha256": "\(String(repeating: "0", count: 64))"
+              }
             }
             """.utf8
         ).write(to: manifestURL)
@@ -341,19 +394,63 @@ private struct ReferenceDatasetFixture {
             try db.execute(sql: """
                 CREATE TABLE products (
                     code TEXT PRIMARY KEY,
+                    source_code TEXT NOT NULL,
                     name TEXT NOT NULL,
                     brand TEXT NOT NULL,
                     quantity TEXT NOT NULL,
+                    quantity_value REAL NOT NULL,
+                    quantity_unit TEXT NOT NULL,
                     primary_category TEXT NOT NULL,
                     ingredients TEXT NOT NULL,
                     sugars_100g REAL NOT NULL,
                     sodium_100g REAL NOT NULL,
+                    salt_100g REAL,
+                    protein_100g REAL,
+                    fiber_100g REAL,
+                    nutriscore TEXT,
+                    nova_group INTEGER,
+                    vegetarian_status TEXT NOT NULL,
+                    vegan_status TEXT NOT NULL,
+                    completeness REAL NOT NULL,
+                    warning_count INTEGER NOT NULL,
+                    scans_n INTEGER NOT NULL,
                     median_price REAL NOT NULL,
+                    price_observation_count INTEGER NOT NULL,
                     price_basis TEXT NOT NULL
                 ) WITHOUT ROWID;
                 INSERT INTO products VALUES (
-                    '3017620422003', 'Nutella', 'Ferrero', '400 g', 'breakfast',
-                    'Sugar, palm oil, hazelnuts', 56.3, 0.043, 3.65, 'UNIT'
+                    '3017620422003', '3017620422003', 'Nutella', 'Ferrero', '400 g', 400.0,
+                    'g', 'breakfast', 'Sugar, palm oil, hazelnuts', 56.3, 0.043,
+                    NULL, NULL, NULL, NULL, NULL, 'unknown', 'unknown', 1.0, 0, 0, 3.65, 1, 'UNIT'
+                );
+                CREATE TABLE product_categories (
+                    product_code TEXT NOT NULL,
+                    category_tag TEXT NOT NULL,
+                    PRIMARY KEY(product_code, category_tag)
+                ) WITHOUT ROWID;
+                CREATE TABLE product_allergens (
+                    product_code TEXT NOT NULL,
+                    allergen_tag TEXT NOT NULL,
+                    evidence_kind TEXT NOT NULL,
+                    PRIMARY KEY(product_code, allergen_tag, evidence_kind)
+                ) WITHOUT ROWID;
+                CREATE TABLE price_observations (
+                    id INTEGER PRIMARY KEY,
+                    product_code TEXT NOT NULL,
+                    price REAL NOT NULL,
+                    price_without_discount REAL,
+                    is_discounted INTEGER NOT NULL,
+                    price_per TEXT NOT NULL,
+                    currency TEXT NOT NULL,
+                    observed_on TEXT NOT NULL,
+                    location_id INTEGER,
+                    osm_id INTEGER,
+                    osm_type TEXT,
+                    city TEXT,
+                    country_code TEXT NOT NULL,
+                    proof_id INTEGER,
+                    proof_type TEXT,
+                    source TEXT
                 );
                 CREATE VIRTUAL TABLE product_fts USING fts5(
                     code UNINDEXED, name, brand, ingredients, category
@@ -377,7 +474,10 @@ private struct ReferenceDatasetFixture {
             {
               "builder_version": "1",
               "selection": { "retained_products": \(retainedProducts) },
-              "artifact": { "sha256": "\(digest)" }
+              "artifact": {
+                "sha256": "\(digest)",
+                "logical_sha256": "af72a8e5d3f4fc1558359981d7b66f6dcdcb020f931d26932cd73ca2ddd2b8c7"
+              }
             }
             """.utf8
         ).write(to: manifestURL)
