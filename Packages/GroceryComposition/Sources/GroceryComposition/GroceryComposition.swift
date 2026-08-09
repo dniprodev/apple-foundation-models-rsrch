@@ -7,7 +7,7 @@ public enum GroceryAppComposition {
     public static func makeAppDependencies(
         useOnDeviceModel: Bool = true,
         claudeCredentialStore: any ClaudeCredentialStore = KeychainClaudeCredentialStore(),
-        claudeResponder: any ClaudeResponder = UnavailableClaudeResponder(),
+        claudeResponder: (any ClaudeResponder)? = nil,
         referenceDataset: ReferenceDatasetResources? = nil,
         applicationSupportDirectory: URL? = nil
     ) throws -> AppDependencies {
@@ -39,7 +39,7 @@ public enum GroceryAppComposition {
     public static func makeDemoDependencies(
         useOnDeviceModel: Bool = true,
         claudeCredentialStore: any ClaudeCredentialStore = KeychainClaudeCredentialStore(),
-        claudeResponder: any ClaudeResponder = UnavailableClaudeResponder()
+        claudeResponder: (any ClaudeResponder)? = nil
     ) -> AppDependencies {
         let catalog = DemoCatalog()
         let householdStore = DemoHouseholdStore(catalogProducts: catalog.products)
@@ -57,14 +57,14 @@ public enum GroceryAppComposition {
         householdStore: any DemoHouseholdRepository,
         useOnDeviceModel: Bool,
         claudeCredentialStore: any ClaudeCredentialStore,
-        claudeResponder: any ClaudeResponder
+        claudeResponder: (any ClaudeResponder)?
     ) -> AppDependencies {
         let localAssistant: any GroceryAssistant = useOnDeviceModel
             ? OnDeviceGroceryAssistant(catalog: catalog)
             : LocalGroceryAssistant(catalog: catalog)
         let claudeProvider = ClaudeRemoteProvider(
             credentialStore: claudeCredentialStore,
-            responder: claudeResponder
+            responder: claudeResponder ?? ClaudeFoundationModelsResponder(catalog: catalog)
         )
         let hybridAssistant = HybridGroceryAssistant(
             localAssistant: localAssistant,

@@ -409,6 +409,12 @@ public struct RemoteProviderResponse: Sendable, Equatable {
     }
 }
 
+public enum RemoteProviderFailure: Error, Sendable, Equatable {
+    case incomplete(events: [ModelRunEvent])
+    case cancelled(events: [ModelRunEvent])
+    case failed
+}
+
 public protocol RemoteGroceryProvider: Sendable {
     var provider: ModelProvider { get }
     func availability() async -> RemoteProviderState

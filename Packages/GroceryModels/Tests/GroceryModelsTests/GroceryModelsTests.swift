@@ -412,6 +412,204 @@ struct GroceryModelsTests {
         #expect(response.answer.text == "Remote lentil answer")
         #expect(await responder.lastCredential == "configured-key")
     }
+
+    @Test func liveClaudeResponderMapsSharedDynamicProfileContextAndStreamingText() async throws {
+        let toolEvents = [
+            ModelRunEvent(kind: .toolCall, label: "public-catalog", content: "lentils"),
+            ModelRunEvent(kind: .toolOutput, label: "public-catalog", content: "Green lentils")
+        ]
+        let sessions = TestClaudeSessionFactory(
+            events: [
+                .snapshot("Use"),
+                .modelRun(toolEvents[0]),
+                .modelRun(toolEvents[1]),
+                .snapshot("Use lentils")
+            ]
+        )
+        let responder = ClaudeFoundationModelsResponder(sessionFactory: sessions)
+        let invocation = RemoteGroceryInvocation(
+            contextView: RemoteContextView(
+                pattern: .batonPass,
+                instructions: "Use only approved grocery evidence.",
+                prompt: "What should I cook?",
+                sharedHistory: [
+                    RemoteHistoryEntry(role: .assistant, label: "local-answer", content: "Start with lentils.")
+                ],
+                toolDefinitions: ["public-catalog"],
+                toolOutputs: [
+                    RemoteHistoryEntry(role: .toolOutput, label: "public-catalog", content: "Green lentils")
+                ],
+                privacyConcerns: []
+            )
+        )
+
+        let response = try await responder.respond(to: invocation, apiKey: "runtime-key")
+        let request = try #require(await sessions.lastRequest)
+
+        #expect(request.kind == .sharedDynamicProfile)
+        #expect(request.sessionID == invocation.sessionID)
+        #expect(request.instructions == "Use only approved grocery evidence.")
+        #expect(request.prompt.contains("What should I cook?"))
+        #expect(request.prompt.contains("Start with lentils."))
+        #expect(request.prompt.contains("Green lentils"))
+        #expect(request.toolNames == ["public-catalog"])
+        #expect(await sessions.lastAPIKey == "runtime-key")
+        #expect(response.answer.text == "Use lentils")
+        #expect(response.events == [
+            ModelRunEvent(kind: .modelOutput, label: "claude-stream", content: "Use"),
+            toolEvents[0],
+            toolEvents[1],
+            ModelRunEvent(kind: .modelOutput, label: "claude-stream", content: " lentils")
+        ])
+    }
+
+    @Test func liveClaudeResponderBuildsIsolatedChildWithoutSharedPrivateHistory() async throws {
+        let sessions = TestClaudeSessionFactory(snapshots: ["Choose oats"])
+        let responder = ClaudeFoundationModelsResponder(sessionFactory: sessions)
+        let task = try RemoteTask(request: GroceryRequest(text: "Find a public cereal alternative"))
+        let invocation = RemoteGroceryInvocation(
+            contextView: RemoteContextView(
+                pattern: .phoneAFriend,
+                sessionOwnership: .isolatedChild,
+                instructions: "Complete only the validated Remote Task.",
+                prompt: "",
+                sharedHistory: [
+                    RemoteHistoryEntry(role: .toolOutput, label: "household-context", content: "peanut allergy")
+                ],
+                toolDefinitions: ["public-catalog"],
+                toolOutputs: [
+                    RemoteHistoryEntry(role: .toolOutput, label: "public-catalog", content: "Plain oats")
+                ],
+                remoteTask: task,
+                privacyConcerns: []
+            ),
+            session: RemoteSession(
+                ownership: .isolatedChild,
+                parentID: "parent-session"
+            )
+        )
+
+        _ = try await responder.respond(to: invocation, apiKey: "runtime-key")
+        let request = try #require(await sessions.lastRequest)
+
+        #expect(request.kind == .isolatedChild)
+        #expect(request.prompt.contains(task.instructionText))
+        #expect(request.prompt.contains("Plain oats"))
+        #expect(!request.prompt.contains("peanut allergy"))
+        #expect(request.toolNames == ["public-catalog"])
+    }
+
+    @Test func liveClaudeResponderPreservesPartialTextWhenTheStreamFails() async throws {
+        let sessions = TestClaudeSessionFactory(
+            snapshots: ["Partial answer"],
+            completion: .failed
+        )
+        let responder = ClaudeFoundationModelsResponder(sessionFactory: sessions)
+
+        do {
+            _ = try await responder.respond(to: testClaudeInvocation(), apiKey: "runtime-key")
+            Issue.record("Expected the failed stream to throw")
+        } catch let failure as RemoteProviderFailure {
+            #expect(failure == .incomplete(events: [
+                ModelRunEvent(kind: .modelOutput, label: "claude-stream", content: "Partial answer")
+            ]))
+        }
+    }
+
+    @Test func liveClaudeResponderMapsCancellationWithoutLeakingProviderErrors() async throws {
+        let sessions = TestClaudeSessionFactory(
+            snapshots: [],
+            completion: .cancelled
+        )
+        let responder = ClaudeFoundationModelsResponder(sessionFactory: sessions)
+
+        do {
+            _ = try await responder.respond(to: testClaudeInvocation(), apiKey: "runtime-key")
+            Issue.record("Expected cancellation to throw")
+        } catch let failure as RemoteProviderFailure {
+            #expect(failure == .cancelled(events: []))
+        }
+    }
+
+    @Test func liveClaudeResponderPreservesToolEventsWhenTheFinalTextIsEmpty() async throws {
+        let toolEvent = ModelRunEvent(
+            kind: .toolOutput,
+            label: "public-catalog",
+            content: "Green lentils"
+        )
+        let sessions = TestClaudeSessionFactory(
+            events: [.modelRun(toolEvent), .snapshot("   ")]
+        )
+        let responder = ClaudeFoundationModelsResponder(sessionFactory: sessions)
+
+        do {
+            _ = try await responder.respond(to: testClaudeInvocation(), apiKey: "runtime-key")
+            Issue.record("Expected an empty final answer to be incomplete")
+        } catch let failure as RemoteProviderFailure {
+            #expect(failure == .incomplete(events: [toolEvent, ModelRunEvent(
+                kind: .modelOutput,
+                label: "claude-stream",
+                content: "   "
+            )]))
+        }
+    }
+
+    @Test func hybridAssistantKeepsIncompleteClaudeOutputInTheFailedModelRun() async {
+        let partialEvent = ModelRunEvent(kind: .modelOutput, label: "claude-stream", content: "Partial answer")
+        let toolEvent = ModelRunEvent(kind: .toolOutput, label: "public-catalog", content: "Green lentils")
+        let assistant = HybridGroceryAssistant(
+            localAssistant: TestLocalAssistant(),
+            provider: FailingRemoteProvider(
+                failure: .incomplete(events: [partialEvent, toolEvent])
+            )
+        )
+
+        let run = await assistant.answer(for: GroceryRequest(text: "Find lentils"))
+
+        #expect(run.trace.error == "claude-request-incomplete")
+        #expect(run.events.contains(partialEvent))
+        #expect(run.trace.tools.contains("public-catalog"))
+        #expect(run.events.last?.kind == .finalAnswer)
+    }
+
+    @Test func hybridAssistantRecordsCancellationAsASafeVisibleFailure() async {
+        let assistant = HybridGroceryAssistant(
+            localAssistant: TestLocalAssistant(),
+            provider: FailingRemoteProvider(failure: .cancelled(events: []))
+        )
+
+        let run = await assistant.answer(for: GroceryRequest(text: "Find lentils"))
+
+        #expect(run.trace.error == "claude-request-cancelled")
+        #expect(run.answer.text == "Hybrid assistance was cancelled.")
+        #expect(run.trace.tools.contains("public-catalog"))
+        #expect(run.events.map(\.kind).suffix(2) == [.error, .finalAnswer])
+    }
+
+    @Test func hybridAssistantKeepsDisclosedToolsOnGenericProviderFailure() async {
+        let assistant = HybridGroceryAssistant(
+            localAssistant: TestLocalAssistant(),
+            provider: FailingRemoteProvider(failure: .failed)
+        )
+
+        let run = await assistant.answer(for: GroceryRequest(text: "Find lentils"))
+
+        #expect(run.trace.error == "claude-request-failed")
+        #expect(run.trace.tools.contains("public-catalog"))
+    }
+}
+
+private func testClaudeInvocation() -> RemoteGroceryInvocation {
+    RemoteGroceryInvocation(
+        contextView: RemoteContextView(
+            pattern: .batonPass,
+            instructions: "Answer from public evidence.",
+            prompt: "lentils",
+            sharedHistory: [],
+            toolDefinitions: ["public-catalog"],
+            privacyConcerns: []
+        )
+    )
 }
 
 private actor TestRemoteProvider: RemoteGroceryProvider {
@@ -447,6 +645,17 @@ private actor TestRemoteProvider: RemoteGroceryProvider {
 
 private enum TestRemoteProviderError: Error, Sendable {
     case transportFailed
+}
+
+private struct FailingRemoteProvider: RemoteGroceryProvider {
+    let failure: RemoteProviderFailure
+    var provider: ModelProvider { .claude }
+
+    func availability() async -> RemoteProviderState { .ready }
+
+    func respond(to invocation: RemoteGroceryInvocation) async throws -> RemoteProviderResponse {
+        throw failure
+    }
 }
 
 private struct TestLocalAssistant: GroceryAssistant {
@@ -503,6 +712,37 @@ private actor TestClaudeResponder: ClaudeResponder {
     ) async throws -> RemoteProviderResponse {
         lastCredential = apiKey
         return RemoteProviderResponse(answer: GroceryAnswer(text: "Remote lentil answer"))
+    }
+}
+
+private actor TestClaudeSessionFactory: ClaudeFoundationModelsSessionFactory {
+    let events: [ClaudeSessionEvent]
+    let completion: ClaudeSessionCompletion
+    private(set) var lastRequest: ClaudeSessionRequest?
+    private(set) var lastAPIKey: String?
+
+    init(
+        snapshots: [String] = [],
+        toolEvents: [ModelRunEvent] = [],
+        events: [ClaudeSessionEvent]? = nil,
+        completion: ClaudeSessionCompletion = .finished
+    ) {
+        self.events = events
+            ?? snapshots.map(ClaudeSessionEvent.snapshot)
+            + toolEvents.map(ClaudeSessionEvent.modelRun)
+        self.completion = completion
+    }
+
+    func response(
+        for request: ClaudeSessionRequest,
+        apiKey: String
+    ) -> ClaudeSessionOutput {
+        lastRequest = request
+        lastAPIKey = apiKey
+        return ClaudeSessionOutput(
+            events: events,
+            completion: completion
+        )
     }
 }
 

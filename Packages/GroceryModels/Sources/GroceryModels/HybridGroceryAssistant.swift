@@ -36,6 +36,11 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
         case disallowedRemoteTool
     }
 
+    private enum RemoteAttempt {
+        case success(RemoteProviderResponse)
+        case failure(ModelRun)
+    }
+
     public init(
         localAssistant: any GroceryAssistant,
         provider: any RemoteGroceryProvider,
@@ -108,11 +113,14 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
         let localRun = await localAssistant.answer(for: request, household: household)
         let invocation = makeBatonPassInvocation(request: request, localRun: localRun)
 
-        do {
-            let response = try validatedResponse(
-                try await provider.respond(to: invocation),
-                for: invocation
-            )
+        switch await remoteAttempt(
+            for: invocation,
+            request: request,
+            household: household,
+            startedAt: startedAt,
+            localRun: localRun
+        ) {
+        case .success(let response):
             let localEvents = localRun.events.map { event in
                 event.kind == .finalAnswer
                     ? ModelRunEvent(kind: .modelOutput, label: "local-answer", content: event.content)
@@ -135,28 +143,8 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
                 ],
                 finalAnswerProfile: .claudeGrocery
             )
-        } catch AssistantError.disallowedRemoteTool {
-            return failure(
-                for: request,
-                household: household,
-                startedAt: startedAt,
-                tools: localRun.trace.tools,
-                errorCode: "claude-disallowed-tool",
-                message: "Hybrid assistance returned a tool outside the disclosed tool set.",
-                localRun: localRun,
-                invocation: invocation
-            )
-        } catch {
-            return failure(
-                for: request,
-                household: household,
-                startedAt: startedAt,
-                tools: localRun.trace.tools,
-                errorCode: "claude-request-failed",
-                message: "Hybrid assistance could not complete this request.",
-                localRun: localRun,
-                invocation: invocation
-            )
+        case .failure(let run):
+            return run
         }
     }
 
@@ -173,11 +161,14 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
             task: task
         )
 
-        do {
-            let response = try validatedResponse(
-                try await provider.respond(to: invocation),
-                for: invocation
-            )
+        switch await remoteAttempt(
+            for: invocation,
+            request: request,
+            household: household,
+            startedAt: startedAt,
+            localRun: localRun
+        ) {
+        case .success(let response):
             let localEvents = localRun.events.map { event in
                 event.kind == .finalAnswer
                     ? ModelRunEvent(kind: .modelOutput, label: "local-parent-context", content: event.content)
@@ -214,8 +205,25 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
                 ],
                 finalAnswerProfile: .localGrocery
             )
+        case .failure(let run):
+            return run
+        }
+    }
+
+    private func remoteAttempt(
+        for invocation: RemoteGroceryInvocation,
+        request: GroceryRequest,
+        household: DemoHousehold?,
+        startedAt: Date,
+        localRun: ModelRun
+    ) async -> RemoteAttempt {
+        do {
+            return .success(try validatedResponse(
+                try await provider.respond(to: invocation),
+                for: invocation
+            ))
         } catch AssistantError.disallowedRemoteTool {
-            return failure(
+            return .failure(failure(
                 for: request,
                 household: household,
                 startedAt: startedAt,
@@ -224,9 +232,18 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
                 message: "Hybrid assistance returned a tool outside the disclosed tool set.",
                 localRun: localRun,
                 invocation: invocation
-            )
+            ))
+        } catch let providerFailure as RemoteProviderFailure {
+            return .failure(providerFailureRun(
+                providerFailure,
+                request: request,
+                household: household,
+                startedAt: startedAt,
+                localRun: localRun,
+                invocation: invocation
+            ))
         } catch {
-            return failure(
+            return .failure(failure(
                 for: request,
                 household: household,
                 startedAt: startedAt,
@@ -235,7 +252,7 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
                 message: "Hybrid assistance could not complete this request.",
                 localRun: localRun,
                 invocation: invocation
-            )
+            ))
         }
     }
 
@@ -287,7 +304,8 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
         errorCode: String,
         message: String,
         localRun: ModelRun? = nil,
-        invocation: RemoteGroceryInvocation? = nil
+        invocation: RemoteGroceryInvocation? = nil,
+        remoteEvents: [ModelRunEvent] = []
     ) -> ModelRun {
         let error = ModelRunEvent(kind: .error, label: errorCode, content: message)
         let finalAnswer = ModelRunEvent(kind: .finalAnswer, label: "answer", content: message)
@@ -296,7 +314,9 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
                 ? ModelRunEvent(kind: .modelOutput, label: "local-answer", content: event.content)
                 : event
         } ?? []
-        let toolEvents = localRun?.trace.toolEvents ?? []
+        let toolEvents = (localRun?.trace.toolEvents ?? []) + remoteEvents.filter {
+            $0.kind == .toolCall || $0.kind == .toolOutput
+        }
         let failureProfiles: [ModelProfileID]
         let failureTransitions: [ModelProfileTransition]
         let finalAnswerProfile: ModelProfileID?
@@ -320,7 +340,7 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
         return ModelRun(
             request: request,
             answer: GroceryAnswer(text: message),
-            events: priorEvents + [error, finalAnswer],
+            events: priorEvents + remoteEvents + [error, finalAnswer],
             trace: ModelTrace(
                 strategy: .hybrid,
                 provider: provider.provider,
@@ -342,6 +362,69 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
                 privacyConcerns: invocation?.contextView.privacyConcerns ?? []
             )
         )
+    }
+
+    private func providerFailureRun(
+        _ providerFailure: RemoteProviderFailure,
+        request: GroceryRequest,
+        household: DemoHousehold?,
+        startedAt: Date,
+        localRun: ModelRun,
+        invocation: RemoteGroceryInvocation
+    ) -> ModelRun {
+        switch providerFailure {
+        case .cancelled(let events):
+            return failure(
+                for: request,
+                household: household,
+                startedAt: startedAt,
+                tools: failureTools(
+                    localRun: localRun,
+                    invocation: invocation
+                ),
+                errorCode: "claude-request-cancelled",
+                message: "Hybrid assistance was cancelled.",
+                localRun: localRun,
+                invocation: invocation,
+                remoteEvents: events
+            )
+        case .incomplete(let events):
+            return failure(
+                for: request,
+                household: household,
+                startedAt: startedAt,
+                tools: failureTools(
+                    localRun: localRun,
+                    invocation: invocation
+                ),
+                errorCode: "claude-request-incomplete",
+                message: "Hybrid assistance stopped before completing this request.",
+                localRun: localRun,
+                invocation: invocation,
+                remoteEvents: events
+            )
+        case .failed:
+            return failure(
+                for: request,
+                household: household,
+                startedAt: startedAt,
+                tools: failureTools(
+                    localRun: localRun,
+                    invocation: invocation
+                ),
+                errorCode: "claude-request-failed",
+                message: "Hybrid assistance could not complete this request.",
+                localRun: localRun,
+                invocation: invocation
+            )
+        }
+    }
+
+    private func failureTools(
+        localRun: ModelRun,
+        invocation: RemoteGroceryInvocation
+    ) -> [String] {
+        unique(localRun.trace.tools + invocation.contextView.toolDefinitions)
     }
 
     private func validatedResponse(

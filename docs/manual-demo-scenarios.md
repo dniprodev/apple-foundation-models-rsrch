@@ -8,8 +8,9 @@ These scenarios are acceptance evidence, not model-quality benchmarks. Do not ju
 
 - Build and launch the Reference App in an eligible Foundation Models environment for local-only runs.
 - Use the bundled fictional households; no personal data is needed.
-- For a live hybrid run, enter the developer Claude credential in the Model Strategy section. It is stored in Keychain and is never shown in a trace.
-- Without a credential, use **Missing Claude setup** to verify the visible setup path. With a credential saved, **Provider failure** verifies the unavailable-provider path in the current demo composition.
+- For the opt-in live Claude smoke path, use Xcode 27 and an iOS 27 simulator or device, enter a developer Anthropic API key in the Model Strategy section, and choose **Save credential**. The app reads it from Keychain only when constructing `ClaudeLanguageModel`; it is never shown in a Model Run or Model Trace.
+- Select Hybrid and run **Hybrid healthier substitutions** for the shared dynamic-profile path or **Pantry-aware planning** for the isolated child-session path. Remove the credential after the smoke run.
+- Without a credential, use **Missing Claude setup** to verify the visible setup path. With an invalid credential saved, **Provider failure** verifies the generic safe provider-failure path.
 
 ## Scenarios
 
