@@ -2,7 +2,7 @@
 
 This build-time tool projects pinned Open Food Facts product Parquet and Open Prices Parquet into the app-owned SQLite Reference Dataset. It does not call a live API, ship the upstream exports, or generate Demo Household state.
 
-The demo snapshot is configured for France/EUR, a fixed 365-day price window, eight scenario categories, and 128 selected products. It keeps at least one product in every category, which is enough to exercise the reference app without shipping a large catalog. The builder fails with a coverage report when a category cannot be represented.
+The demo snapshot is configured for France/EUR, a fixed 365-day price window, eight scenario categories, and 500 selected products. It targets 20 products per category, then fills remaining slots round-robin with the strongest remaining records in each category. Category targets are soft: the manifest records source-constrained shortfalls rather than admitting lower-quality products or failing the build.
 
 ## Inputs and selective preparation
 

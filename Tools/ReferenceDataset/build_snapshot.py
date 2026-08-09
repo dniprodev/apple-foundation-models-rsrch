@@ -22,7 +22,7 @@ from typing import Any, Iterable
 import duckdb
 
 
-BUILDER_VERSION = "1"
+BUILDER_VERSION = "2"
 DEFAULT_PRODUCT_REVISION = "2a652ac61d03a601e132aa80833823cd33adea2d"
 DEFAULT_PRICE_REVISION = "60c5118e3c1434717d1871a37cf2ee27c61aa530"
 
@@ -62,8 +62,8 @@ class DatasetConfig:
     currency: str = "EUR"
     price_window_start: str = "2025-08-04"
     price_window_end: str = "2026-08-03"
-    category_quota: int = 1
-    target_products: int = 128
+    category_target: int = 20
+    target_products: int = 500
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "product_path", Path(self.product_path))
@@ -80,10 +80,10 @@ class DatasetConfig:
             raise ValueError("product_sha256 must be a 64-character checksum")
         if not re.fullmatch(r"[0-9a-f]{64}", self.price_sha256):
             raise ValueError("price_sha256 must be a 64-character checksum")
-        if self.category_quota < 1:
-            raise ValueError("category_quota must be positive")
-        if self.target_products < self.category_quota * len(CATEGORY_RULES):
-            raise ValueError("target_products must cover every category quota")
+        if self.category_target < 1:
+            raise ValueError("category_target must be positive")
+        if self.target_products < self.category_target * len(CATEGORY_RULES):
+            raise ValueError("target_products must cover every category target")
         if date.fromisoformat(self.price_window_start) > date.fromisoformat(self.price_window_end):
             raise ValueError("price window start must not be after its end")
 
@@ -163,6 +163,7 @@ class SnapshotReport:
     product_count: int
     price_count: int
     category_counts: dict[str, int]
+    category_shortfalls: dict[str, int]
     rejection_counts: dict[str, int]
     verification: dict[str, Any]
 
@@ -445,32 +446,50 @@ def _rank(product: ProductCandidate) -> tuple[object, ...]:
     )
 
 
-def _select_products(products: list[ProductCandidate], config: DatasetConfig) -> list[ProductCandidate]:
+def _select_products(
+    products: list[ProductCandidate],
+    config: DatasetConfig,
+) -> tuple[list[ProductCandidate], dict[str, int]]:
     by_category = {category: [] for category, _ in CATEGORY_RULES}
     for product in products:
         by_category[product.primary_category].append(product)
+    ranked_by_category = {
+        category: sorted(candidates, key=_rank)
+        for category, candidates in by_category.items()
+    }
     selected: dict[str, ProductCandidate] = {}
-    shortages: dict[str, int] = {}
+    shortfalls: dict[str, int] = {}
     for category, _ in CATEGORY_RULES:
-        candidates = sorted(by_category[category], key=_rank)
-        if len(candidates) < config.category_quota:
-            shortages[category] = len(candidates)
-            continue
-        for product in candidates[: config.category_quota]:
+        candidates = ranked_by_category[category]
+        if len(candidates) < config.category_target:
+            shortfalls[category] = config.category_target - len(candidates)
+        for product in candidates[: config.category_target]:
             selected[product.code] = product
-    if shortages:
-        raise SnapshotError(
-            "category quota not met: "
-            + json.dumps({"required": config.category_quota, "available": shortages}, sort_keys=True)
-        )
     if len(products) < config.target_products:
         raise SnapshotError(
             f"target requires {config.target_products} products but only {len(products)} passed quality gates"
         )
-    remaining = sorted((product for product in products if product.code not in selected), key=_rank)
-    for product in remaining[: config.target_products - len(selected)]:
-        selected[product.code] = product
-    return sorted(selected.values(), key=lambda product: product.code)
+    remaining_by_category = {
+        category: iter(
+            product
+            for product in ranked_by_category[category]
+            if product.code not in selected
+        )
+        for category, _ in CATEGORY_RULES
+    }
+    while len(selected) < config.target_products:
+        added_product = False
+        for category, _ in CATEGORY_RULES:
+            product = next(remaining_by_category[category], None)
+            if product is None:
+                continue
+            selected[product.code] = product
+            added_product = True
+            if len(selected) == config.target_products:
+                break
+        if not added_product:
+            break
+    return sorted(selected.values(), key=lambda product: product.code), shortfalls
 
 
 SCHEMA = """
@@ -672,7 +691,7 @@ def build_snapshot(config: DatasetConfig) -> SnapshotReport:
         )
     prices_by_code = _load_prices(config)
     products, rejection_counts, source_rows = _load_products(config, prices_by_code)
-    selected = _select_products(products, config)
+    selected, category_shortfalls = _select_products(products, config)
     rejection_counts["not_selected_after_quality_gate"] = len(products) - len(selected)
     _write_database(config.output_path, selected)
     verification = _verify_database(config.output_path, selected)
@@ -686,6 +705,7 @@ def build_snapshot(config: DatasetConfig) -> SnapshotReport:
         product_count=len(selected),
         price_count=sum(len(product.prices) for product in selected),
         category_counts=category_counts,
+        category_shortfalls=category_shortfalls,
         rejection_counts=rejection_counts,
         verification=verification,
     )
@@ -703,8 +723,9 @@ def build_snapshot(config: DatasetConfig) -> SnapshotReport:
         },
         "selection": {
             "target_products": config.target_products,
-            "category_quota": config.category_quota,
+            "category_target": config.category_target,
             "category_counts": category_counts,
+            "category_shortfalls": category_shortfalls,
             "retained_products": len(selected),
             "rejection_counts": rejection_counts,
         },
@@ -737,8 +758,8 @@ def _arguments() -> DatasetConfig:
     parser.add_argument("--currency", default="EUR")
     parser.add_argument("--price-window-start", default="2025-08-04")
     parser.add_argument("--price-window-end", default="2026-08-03")
-    parser.add_argument("--category-quota", type=int, default=1)
-    parser.add_argument("--target-products", type=int, default=128)
+    parser.add_argument("--category-target", type=int, default=20)
+    parser.add_argument("--target-products", type=int, default=500)
     args = parser.parse_args()
     return DatasetConfig(
         product_path=args.products,
@@ -753,7 +774,7 @@ def _arguments() -> DatasetConfig:
         currency=args.currency,
         price_window_start=args.price_window_start,
         price_window_end=args.price_window_end,
-        category_quota=args.category_quota,
+        category_target=args.category_target,
         target_products=args.target_products,
     )
 

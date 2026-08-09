@@ -1,11 +1,11 @@
 {
   "artifact": {
-    "logical_sha256": "71f46e9debfc6dba23002c44142924a442531666fd03514bd0ed806e7758e9e1",
-    "price_observation_count": 2350,
-    "product_count": 128,
-    "sha256": "3a86042c9d77430ead972bf8897a5476706c1e1c20cf0e7dd82e8f031fcf7800"
+    "logical_sha256": "a5bc6d34be4aae627829eb3136e23fa720f38d41bd62b02b5b2f775b759d043c",
+    "price_observation_count": 5005,
+    "product_count": 500,
+    "sha256": "61c6827f68a25c8432aeb3cfe45fd3ea0eaef677fcac5234454bdff3823656ac"
   },
-  "builder_version": "1",
+  "builder_version": "2",
   "market": {
     "country": "FR",
     "currency": "EUR"
@@ -16,16 +16,19 @@
   },
   "selection": {
     "category_counts": {
-      "bread_wraps": 14,
-      "breakfast": 21,
-      "dairy_alternatives": 15,
-      "fruit_vegetables": 2,
-      "pantry_staples": 5,
-      "proteins": 9,
-      "ready_lunch": 1,
-      "snacks": 61
+      "bread_wraps": 78,
+      "breakfast": 94,
+      "dairy_alternatives": 94,
+      "fruit_vegetables": 23,
+      "pantry_staples": 65,
+      "proteins": 49,
+      "ready_lunch": 4,
+      "snacks": 93
     },
-    "category_quota": 1,
+    "category_shortfalls": {
+      "ready_lunch": 16
+    },
+    "category_target": 20,
     "rejection_counts": {
       "duplicate_normalised_barcode": 0,
       "invalid_barcode": 0,
@@ -33,17 +36,17 @@
       "missing_package_quantity": 0,
       "missing_price": 0,
       "not_in_target_market": 0,
-      "not_selected_after_quality_gate": 61
+      "not_selected_after_quality_gate": 365
     },
-    "retained_products": 128,
-    "target_products": 128
+    "retained_products": 500,
+    "target_products": 500
   },
   "sources": {
     "price_revision": "60c5118e3c1434717d1871a37cf2ee27c61aa530",
     "price_sha256": "cd76192e24953cdb192b15471e84995028dccf43004d643a9d1b0f0b0c1ec5f7",
     "product_revision": "2a652ac61d03a601e132aa80833823cd33adea2d",
-    "product_sha256": "32b77c1d666de3c6bc9186352591e917af4c0e63fc735759bcce4d45dcd55e6f",
-    "product_source_rows": 189
+    "product_sha256": "085ccfa16b823ecad7f5f9fafe4df47cd94d69d3cd16aa4d68c1811948c6089d",
+    "product_source_rows": 865
   },
   "verification": {
     "barcode_lookup_plan": "SEARCH products USING PRIMARY KEY (code=?)",

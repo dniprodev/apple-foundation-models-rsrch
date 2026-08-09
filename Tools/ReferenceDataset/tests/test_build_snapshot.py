@@ -17,6 +17,72 @@ from prepare_product_subset import ProductSubsetConfig, prepare_product_subset
 
 
 class ReferenceDatasetBuilderTests(unittest.TestCase):
+    def test_remaining_slots_are_balanced_across_categories(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            products = root / "products.parquet"
+            prices = root / "prices.parquet"
+            self._write_inputs(
+                products,
+                prices,
+                extra_categories=["en:breakfast-cereals"] * 7 + ["en:dairies"] * 7,
+            )
+
+            report = build_snapshot(
+                DatasetConfig(
+                    product_path=products,
+                    price_path=prices,
+                    output_path=root / "catalog.sqlite",
+                    manifest_path=root / "manifest.json",
+                    product_revision="a" * 40,
+                    price_revision="b" * 40,
+                    product_sha256=hashlib.sha256(products.read_bytes()).hexdigest(),
+                    price_sha256=hashlib.sha256(prices.read_bytes()).hexdigest(),
+                    price_window_start="2025-01-01",
+                    price_window_end="2025-12-31",
+                    category_target=1,
+                    target_products=16,
+                )
+            )
+
+            self.assertEqual(report.category_counts["breakfast"], 5)
+            self.assertEqual(report.category_counts["dairy_alternatives"], 5)
+
+    def test_category_targets_record_source_constrained_shortfalls(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            products = root / "products.parquet"
+            prices = root / "prices.parquet"
+            self._write_inputs(
+                products,
+                prices,
+                extra_categories=["en:breakfast-cereals"] * 7,
+            )
+            manifest_path = root / "manifest.json"
+
+            report = build_snapshot(
+                DatasetConfig(
+                    product_path=products,
+                    price_path=prices,
+                    output_path=root / "catalog.sqlite",
+                    manifest_path=manifest_path,
+                    product_revision="a" * 40,
+                    price_revision="b" * 40,
+                    product_sha256=hashlib.sha256(products.read_bytes()).hexdigest(),
+                    price_sha256=hashlib.sha256(prices.read_bytes()).hexdigest(),
+                    price_window_start="2025-01-01",
+                    price_window_end="2025-12-31",
+                    category_target=2,
+                    target_products=16,
+                )
+            )
+
+            self.assertEqual(report.product_count, 16)
+            self.assertEqual(report.category_shortfalls["ready_lunch"], 1)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["selection"]["category_target"], 2)
+            self.assertEqual(manifest["selection"]["category_shortfalls"]["ready_lunch"], 1)
+
     def test_preparation_keeps_only_products_with_eligible_prices(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -70,7 +136,7 @@ class ReferenceDatasetBuilderTests(unittest.TestCase):
                 currency="EUR",
                 price_window_start="2025-01-01",
                 price_window_end="2025-12-31",
-                category_quota=1,
+                category_target=1,
                 target_products=9,
             )
 
@@ -124,12 +190,18 @@ class ReferenceDatasetBuilderTests(unittest.TestCase):
                         price_revision="b" * 40,
                         product_sha256="0" * 64,
                         price_sha256=hashlib.sha256(prices.read_bytes()).hexdigest(),
-                        category_quota=1,
+                        category_target=1,
                         target_products=9,
                     )
                 )
 
-    def _write_inputs(self, products: Path, prices: Path) -> None:
+    def _write_inputs(
+        self,
+        products: Path,
+        prices: Path,
+        extra_categories: list[str] | None = None,
+    ) -> None:
+        extra_categories = extra_categories or []
         categories = [
             "en:breakfast-cereals",
             "en:dairies",
@@ -140,10 +212,15 @@ class ReferenceDatasetBuilderTests(unittest.TestCase):
             "en:pastas",
             "en:prepared-meals",
             "en:breakfast-cereals",
-        ]
+        ] + extra_categories
+        codes = ["1234567"] + [f"200000000000{index}" for index in range(1, 9)]
+        codes += [f"30000000000{index:02d}" for index in range(len(extra_categories))]
+        product_values = ", ".join(f"('{code}')" for code in codes)
+        price_codes = ["01234567", *codes[1:]]
+        price_values = ", ".join(f"('{code}')" for code in price_codes)
         connection = duckdb.connect()
         connection.execute(
-            """
+            f"""
             CREATE TABLE products AS
             SELECT * FROM (
                 SELECT
@@ -176,22 +253,19 @@ class ReferenceDatasetBuilderTests(unittest.TestCase):
                     []::VARCHAR[] AS traces_tags,
                     'false' AS obsolete,
                     10::INTEGER AS scans_n
-                FROM (VALUES
-                    ('1234567'), ('2000000000001'), ('2000000000002'), ('2000000000003'),
-                    ('2000000000004'), ('2000000000005'), ('2000000000006'), ('2000000000007'),
-                    ('2000000000008')) AS values_table(code)
+                FROM (VALUES {product_values}) AS values_table(code)
                 CROSS JOIN range(1) AS range_table(index)
             )
             """
         )
         for index, category in enumerate(categories):
-            code = "1234567" if index == 0 else f"200000000000{index}"
+            code = codes[index]
             connection.execute(
                 f"UPDATE products SET categories_tags = ['{category}'] WHERE code = '{code}'"
             )
         connection.execute(f"COPY products TO '{products}' (FORMAT PARQUET)")
         connection.execute(
-            """
+            f"""
             CREATE TABLE prices AS
             SELECT
                 row_number() OVER ()::BIGINT AS id,
@@ -211,10 +285,7 @@ class ReferenceDatasetBuilderTests(unittest.TestCase):
                 1::BIGINT AS proof_id,
                 'receipt' AS proof_type,
                 'fixture' AS source
-            FROM (VALUES
-                ('01234567'), ('2000000000001'), ('2000000000002'), ('2000000000003'),
-                ('2000000000004'), ('2000000000005'), ('2000000000006'), ('2000000000007'),
-                ('2000000000008')) AS values_table(code)
+            FROM (VALUES {price_values}) AS values_table(code)
             """
         )
         connection.execute(f"COPY prices TO '{prices}' (FORMAT PARQUET)")
