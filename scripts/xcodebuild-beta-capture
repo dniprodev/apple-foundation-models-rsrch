@@ -1,0 +1,16 @@
+#!/bin/zsh
+
+# Run Xcode beta and capture its complete output.
+# Usage: ./scripts/xcodebuild-beta-capture <log-path> <xcodebuild arguments...>
+
+if (( $# < 2 )); then
+  print -u2 "usage: $0 <log-path> <xcodebuild arguments...>"
+  exit 2
+fi
+
+log_path=$1
+shift
+
+exec env \
+  DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+  /usr/bin/xcodebuild "$@" > "$log_path" 2>&1

@@ -1,0 +1,6 @@
+#!/bin/zsh
+
+# Run Xcode builds and tests with the repository's pinned Xcode beta toolchain.
+exec env \
+  DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+  /usr/bin/xcodebuild "$@"
