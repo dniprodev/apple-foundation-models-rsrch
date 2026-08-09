@@ -20,5 +20,3 @@ __pycache__/
 !.env.example
 .envrc
 .agents/
-.scratch/
-notes/

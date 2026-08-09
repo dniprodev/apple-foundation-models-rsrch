@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thin Reference Shell — Prototype</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17211b;
+      --muted: #657069;
+      --line: #dce3dd;
+      --paper: #fbfcf8;
+      --panel: #ffffff;
+      --green: #1f6a43;
+      --green-soft: #e4f2e8;
+      --amber: #8a5400;
+      --amber-soft: #fff1d5;
+      --blue: #245f91;
+      --blue-soft: #e8f2fb;
+      --shadow: 0 16px 44px rgba(28, 48, 35, .12);
+      font-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #edf1eb; color: var(--ink); }
+    button, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+
+    .phone {
+      width: min(100%, 430px);
+      min-height: 100vh;
+      margin: 0 auto;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+      padding-bottom: 108px;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 18px 12px;
+      background: rgba(251, 252, 248, .94);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(220, 227, 221, .85);
+    }
+
+    h1 { margin: 0; font-size: 20px; letter-spacing: -.03em; }
+    h2, h3, p { margin-top: 0; }
+    .eyebrow { margin: 0 0 3px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .history { border: 0; background: transparent; color: var(--green); font-weight: 750; }
+
+    .controls { padding: 14px 16px 0; }
+    .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+    select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      color: var(--ink);
+      outline: none;
+    }
+    select { padding: 10px 9px; font-size: 13px; text-transform: none; letter-spacing: 0; }
+    textarea { min-height: 78px; resize: vertical; padding: 12px; line-height: 1.4; }
+    select:focus, textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(31, 106, 67, .11); }
+
+    .composer { margin-top: 9px; }
+    .run-row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+    .scenario { color: var(--muted); font-size: 12px; }
+    .run {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 16px;
+      background: var(--green);
+      color: white;
+      font-weight: 800;
+    }
+
+    .stale {
+      display: none;
+      margin: 12px 16px 0;
+      padding: 9px 11px;
+      border-radius: 10px;
+      background: var(--amber-soft);
+      color: var(--amber);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .stale.visible { display: block; }
+
+    main { padding: 18px 16px; }
+    .run-title { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .run-title h2 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
+    .run-title span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+    .source {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 850;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .source::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .apple { color: var(--green); }
+    .tool { color: var(--blue); }
+    .claude { color: var(--amber); }
+    .assistant { color: #603a83; }
+    .muted { color: var(--muted); }
+
+    details summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 750; }
+    .raw {
+      margin: 10px 0 0;
+      padding: 10px;
+      overflow: auto;
+      border-radius: 9px;
+      background: #17211b;
+      color: #eaf2ec;
+      font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: pre-wrap;
+    }
+
+    /* A: narrative timeline */
+    .timeline { display: grid; gap: 0; }
+    .event { position: relative; margin-left: 11px; padding: 0 0 20px 24px; border-left: 2px solid var(--line); }
+    .event::before { content: ""; position: absolute; left: -7px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--paper); border: 2px solid currentColor; }
+    .event-card { margin-top: 6px; padding: 13px; border: 1px solid var(--line); border-radius: 15px; background: var(--panel); }
+    .event-card p { margin: 7px 0 10px; font-size: 14px; line-height: 1.45; }
+    .event.final-event { border-left-color: transparent; padding-bottom: 0; }
+    .event.final-event::before { background: #603a83; border-color: #603a83; }
+    .final-card { border: 2px solid #c9b5dc; background: #fcf8ff; }
+    .final-card h3 { margin: 8px 0; font-size: 22px; line-height: 1.18; letter-spacing: -.03em; }
+
+    .evidence { display: grid; gap: 8px; margin-top: 13px; }
+    .product { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 11px; border-radius: 12px; background: var(--green-soft); }
+    .product strong { font-size: 13px; }
+    .product span { color: var(--muted); font-size: 11px; }
+    .product button { grid-row: 1 / span 2; grid-column: 2; align-self: center; border: 0; background: transparent; color: var(--green); font-weight: 800; }
+
+    /* B: execution ledger */
+    .ledger { overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--panel); }
+    .ledger-row { display: grid; grid-template-columns: 28px 78px 1fr; gap: 7px; padding: 12px 10px; border-bottom: 1px solid var(--line); }
+    .ledger-row:last-child { border: 0; }
+    .ledger-row .number { color: var(--muted); font-size: 11px; font-weight: 850; }
+    .ledger-row p { margin: 4px 0 0; font-size: 13px; line-height: 1.4; }
+    .ledger-row.final { padding-block: 18px; background: #fcf8ff; }
+    .ledger-row.final p { font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+    .ledger details { grid-column: 3; }
+
+    /* C: focused step reader */
+    .step-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; }
+    .step-button { flex: 0 0 auto; width: 62px; padding: 8px 5px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); color: var(--muted); font-size: 10px; font-weight: 800; }
+    .step-button.active { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+    .step-panel { min-height: 330px; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+    .step-panel h3 { margin: 10px 0; font-size: 25px; letter-spacing: -.035em; }
+    .step-panel p { line-height: 1.55; }
+    .step-panel .position { margin-bottom: 24px; color: var(--muted); font-size: 12px; }
+    .step-nav { display: flex; justify-content: space-between; margin-top: 16px; }
+    .step-nav button { border: 1px solid var(--line); border-radius: 999px; padding: 9px 13px; background: var(--panel); color: var(--ink); font-weight: 800; }
+
+    .switcher {
+      position: fixed;
+      z-index: 20;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: 40px minmax(160px, auto) 40px;
+      align-items: center;
+      padding: 7px;
+      border-radius: 999px;
+      background: #17211b;
+      color: white;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, .25);
+    }
+    .switcher button { width: 36px; height: 36px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .1); color: white; font-size: 20px; }
+    .variant-name { padding: 0 10px; text-align: center; font-size: 12px; font-weight: 800; }
+
+    dialog { width: min(calc(100% - 32px), 398px); border: 0; border-radius: 20px; padding: 20px; box-shadow: var(--shadow); }
+    dialog::backdrop { background: rgba(15, 24, 18, .48); }
+    dialog button { border: 0; border-radius: 999px; padding: 9px 13px; background: var(--green); color: white; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <!-- Three variants of a readable model run, switchable via ?variant=, on a standalone throwaway prototype page. -->
+  <div class="phone">
+    <header>
+      <div>
+        <p class="eyebrow">Reference app</p>
+        <h1>Grocery Assistant</h1>
+      </div>
+      <button class="history">Previous runs</button>
+    </header>
+
+    <section class="controls" aria-label="Request context">
+      <div class="control-grid">
+        <label>Demo household
+          <select id="household">
+            <option>Budget Family</option>
+            <option>Nutrition Couple</option>
+            <option>Low-Waste Solo</option>
+          </select>
+        </label>
+        <label>Model strategy
+          <select id="strategy">
+            <option>Hybrid</option>
+            <option>Local only</option>
+          </select>
+        </label>
+      </div>
+      <label class="composer">Request
+        <textarea id="request">Find a peanut-free breakfast swap that costs less than our usual cereal.</textarea>
+      </label>
+      <div class="run-row">
+        <span class="scenario">Scenario: hybrid substitution</span>
+        <button class="run" id="run">Run request</button>
+      </div>
+    </section>
+
+    <div class="stale" id="stale">This result used the previous household or strategy. Run the request again to refresh it.</div>
+    <main id="app"></main>
+  </div>
+
+  <nav class="switcher" aria-label="Prototype variants">
+    <button id="previous" aria-label="Previous variant">←</button>
+    <div class="variant-name" id="variantName"></div>
+    <button id="next" aria-label="Next variant">→</button>
+  </nav>
+
+  <dialog id="productDialog">
+    <p class="eyebrow">Product evidence</p>
+    <h2>Sunrise Oat Squares</h2>
+    <p>Peanut-free according to the pinned Open Food Facts snapshot. Median observed price: $3.49. The household's usual cereal averages $4.69.</p>
+    <p class="muted">Barcode 000123456789 · Snapshot 2026-07-15</p>
+    <button onclick="productDialog.close()">Done</button>
+  </dialog>
+
+  <script>
+    const variants = [
+      { key: 'A', name: 'Narrative timeline' },
+      { key: 'B', name: 'Execution ledger' },
+      { key: 'C', name: 'Focused step reader' }
+    ];
+
+    const steps = [
+      {
+        source: 'Apple on-device', className: 'apple', title: 'Interpreted request',
+        excerpt: 'Need a breakfast substitute constrained by peanut allergy, household purchase history, and lower price.',
+        raw: `intent: substitute_product\ncategory: breakfast_cereal\nconstraints:\n  - allergen != peanuts\n  - price < household_usual_price\nneeds_remote_help: true`
+      },
+      {
+        source: 'Catalog tool', className: 'tool', title: 'Retrieved candidates',
+        excerpt: 'Found 12 breakfast products; 4 pass the allergen, category, and observed-price filters.',
+        raw: `query_catalog(category: "breakfast_cereal", excludes: ["peanuts"], max_price: 4.69)\n→ 4 matches from snapshot off-2026-07-15\nTop: Sunrise Oat Squares, $3.49; Plain Wheat Biscuits, $3.79`
+      },
+      {
+        source: 'Claude', className: 'claude', title: 'Compared substitutions',
+        excerpt: 'Sunrise Oat Squares is the clearest swap: it stays below the usual price and has the closest serving pattern.',
+        raw: `Given the four retrieved records and the bounded household facts, rank Sunrise Oat Squares first. It is $1.20 below the household's usual cereal and its allergen record does not list peanuts. Plain Wheat Biscuits is second, but recent household purchases suggest the children prefer oat cereals.`
+      },
+      {
+        source: 'Apple on-device', className: 'apple', title: 'Synthesized answer',
+        excerpt: 'Combined the remote comparison with local household constraints and catalog evidence.',
+        raw: `Use the ranked candidate but qualify the allergen claim as catalog evidence, not a medical guarantee. Mention the exact observed price difference. Do not modify the cart.`
+      },
+      {
+        source: 'Final answer', className: 'assistant', title: 'Try Sunrise Oat Squares',
+        excerpt: 'It is peanut-free in the catalog data and about $1.20 cheaper than your usual cereal. It also matches your family’s recent preference for oat cereals.',
+        raw: `Try Sunrise Oat Squares. It is listed as peanut-free in the current catalog snapshot and its observed price is $3.49—about $1.20 less than your usual cereal. It also fits your family’s recent preference for oat cereals. Always verify the package label for allergy information.`
+      }
+    ];
+
+    const evidence = `<div class="evidence"><div class="product"><strong>Sunrise Oat Squares</strong><span>$3.49 · catalog + household evidence</span><button onclick="productDialog.showModal()">Details</button></div></div>`;
+
+    function detail(step) {
+      return `<details><summary>Show complete observable output</summary><pre class="raw">${step.raw}</pre></details>`;
+    }
+
+    function renderA() {
+      return `<div class="run-title"><h2>How the answer formed</h2><span>4.2 seconds</span></div><section class="timeline">${steps.map((step, index) => `
+        <article class="event ${index === steps.length - 1 ? 'final-event' : ''} ${step.className}">
+          <div class="event-card ${index === steps.length - 1 ? 'final-card' : ''}">
+            <span class="source ${step.className}">${step.source}</span>
+            ${index === steps.length - 1 ? `<h3>${step.title}</h3>` : ''}
+            <p>${step.excerpt}</p>
+            ${index === steps.length - 1 ? evidence : ''}
+            ${detail(step)}
+          </div>
+        </article>`).join('')}</section>`;
+    }
+
+    function renderB() {
+      return `<div class="run-title"><h2>Model run</h2><span>5 outputs · 4.2s</span></div><section class="ledger">${steps.map((step, index) => `
+        <article class="ledger-row ${index === steps.length - 1 ? 'final' : ''}">
+          <span class="number">${String(index + 1).padStart(2, '0')}</span>
+          <span class="source ${step.className}">${step.source}</span>
+          <div><strong>${step.title}</strong><p>${step.excerpt}</p>${index === steps.length - 1 ? evidence : ''}</div>
+          ${detail(step)}
+        </article>`).join('')}</section>`;
+    }
+
+    let focusedStep = 0;
+    function renderC() {
+      const step = steps[focusedStep];
+      document.querySelector('#app').innerHTML = `
+        <div class="run-title"><h2>Follow the run</h2><span>${focusedStep + 1} of ${steps.length}</span></div>
+        <div class="step-strip">${steps.map((item, index) => `<button class="step-button ${index === focusedStep ? 'active' : ''}" data-step="${index}">${index + 1}<br>${item.source.split(' ')[0]}</button>`).join('')}</div>
+        <article class="step-panel">
+          <span class="source ${step.className}">${step.source}</span>
+          <h3>${step.title}</h3>
+          <p class="position">Chronological output ${focusedStep + 1}</p>
+          <p>${step.excerpt}</p>
+          ${focusedStep === steps.length - 1 ? evidence : ''}
+          ${detail(step)}
+        </article>
+        <div class="step-nav"><button id="backStep" ${focusedStep === 0 ? 'disabled' : ''}>← Earlier</button><button id="forwardStep" ${focusedStep === steps.length - 1 ? 'disabled' : ''}>Later →</button></div>`;
+      document.querySelectorAll('[data-step]').forEach(button => button.addEventListener('click', () => { focusedStep = Number(button.dataset.step); renderC(); }));
+      document.querySelector('#backStep').addEventListener('click', () => { focusedStep = Math.max(0, focusedStep - 1); renderC(); });
+      document.querySelector('#forwardStep').addEventListener('click', () => { focusedStep = Math.min(steps.length - 1, focusedStep + 1); renderC(); });
+    }
+
+    function currentVariant() {
+      const key = new URLSearchParams(location.search).get('variant') || 'A';
+      return variants.find(item => item.key === key) || variants[0];
+    }
+
+    function render() {
+      const variant = currentVariant();
+      document.querySelector('#variantName').textContent = `${variant.key} — ${variant.name}`;
+      if (variant.key === 'A') document.querySelector('#app').innerHTML = renderA();
+      if (variant.key === 'B') document.querySelector('#app').innerHTML = renderB();
+      if (variant.key === 'C') renderC();
+    }
+
+    function cycle(delta) {
+      const current = variants.findIndex(item => item.key === currentVariant().key);
+      const next = variants[(current + delta + variants.length) % variants.length];
+      const url = new URL(location.href);
+      url.searchParams.set('variant', next.key);
+      history.replaceState({}, '', url);
+      render();
+    }
+
+    document.querySelector('#previous').addEventListener('click', () => cycle(-1));
+    document.querySelector('#next').addEventListener('click', () => cycle(1));
+    document.addEventListener('keydown', event => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) || document.activeElement.isContentEditable) return;
+      if (event.key === 'ArrowLeft') cycle(-1);
+      if (event.key === 'ArrowRight') cycle(1);
+    });
+
+    ['household', 'strategy'].forEach(id => document.querySelector(`#${id}`).addEventListener('change', () => document.querySelector('#stale').classList.add('visible')));
+    document.querySelector('#run').addEventListener('click', () => {
+      document.querySelector('#stale').classList.remove('visible');
+      document.querySelector('.scenario').textContent = document.querySelector('#strategy').value === 'Local only' ? 'Scenario: local-only analysis' : 'Scenario: hybrid substitution';
+      render();
+      document.querySelector('#app').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    render();
+  </script>
+</body>
+</html>

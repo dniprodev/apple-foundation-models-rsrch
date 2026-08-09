@@ -1,0 +1,3 @@
+## Question
+
+What constraints in the current iOS 27 Foundation Models APIs and Anthropic's `ClaudeForFoundationModels` package must the specification respect? Verify from primary sources the semantics and compatibility of `LanguageModel`, `LanguageModelSession`, `DynamicProfile`, `DynamicInstructions`, generated content, client-side tools, transcript/history transforms, streaming, model availability, Claude authentication, error handling, usage metadata, and testing on simulator versus physical device. Distinguish documented guarantees from beta limitations and identify any assumptions that need a prototype.
