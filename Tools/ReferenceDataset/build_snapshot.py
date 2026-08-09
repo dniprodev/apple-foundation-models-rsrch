@@ -62,8 +62,8 @@ class DatasetConfig:
     currency: str = "EUR"
     price_window_start: str = "2025-08-04"
     price_window_end: str = "2026-08-03"
-    category_quota: int = 250
-    target_products: int = 3_000
+    category_quota: int = 1
+    target_products: int = 128
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "product_path", Path(self.product_path))
@@ -312,25 +312,43 @@ def _load_products(
         """
         SELECT
             CAST(code AS VARCHAR),
-            coalesce(nullif(CAST(product_name_fr AS VARCHAR), ''), CAST(product_name AS VARCHAR)),
+            coalesce(
+                nullif(list_extract(list_filter(product_name, item -> item.lang = 'fr'), 1).text, ''),
+                nullif(list_extract(product_name, 1).text, '')
+            ),
             coalesce(CAST(brands AS VARCHAR), ''),
             coalesce(CAST(quantity AS VARCHAR), ''),
             CAST(product_quantity AS DOUBLE), CAST(product_quantity_unit AS VARCHAR),
-            countries_tags, CAST(ingredients_text AS VARCHAR), ingredients_analysis_tags,
-            categories_tags, nutriments.sugars_100g, nutriments.sodium_100g,
-            nutriments.salt_100g, nutriments.proteins_100g, nutriments.fiber_100g,
+            countries_tags,
+            list_extract(ingredients_text, 1).text,
+            ingredients_analysis_tags,
+            categories_tags,
+            list_extract(list_filter(nutriments, item -> item.name = 'sugars'), 1)."100g",
+            list_extract(list_filter(nutriments, item -> item.name = 'sodium'), 1)."100g",
+            list_extract(list_filter(nutriments, item -> item.name = 'salt'), 1)."100g",
+            list_extract(list_filter(nutriments, item -> item.name = 'proteins'), 1)."100g",
+            list_extract(list_filter(nutriments, item -> item.name = 'fiber'), 1)."100g",
             CAST(nutriscore_grade AS VARCHAR), CAST(nova_group AS INTEGER),
             CAST(completeness AS DOUBLE), data_quality_errors_tags,
             data_quality_warnings_tags, CAST(scans_n AS INTEGER), CAST(obsolete AS VARCHAR),
-            CAST(ingredients_text_fr AS VARCHAR),
+            coalesce(
+                nullif(list_extract(list_filter(ingredients_text, item -> item.lang = 'fr'), 1).text, ''),
+                nullif(list_extract(ingredients_text, 1).text, '')
+            ),
             allergens_tags, traces_tags
         FROM read_parquet(?)
         WHERE lower(CAST(obsolete AS VARCHAR)) NOT IN ('true', 'on', '1')
-          AND coalesce(nullif(CAST(product_name_fr AS VARCHAR), ''), nullif(CAST(product_name AS VARCHAR), '')) IS NOT NULL
-          AND coalesce(nullif(CAST(ingredients_text_fr AS VARCHAR), ''), nullif(CAST(ingredients_text AS VARCHAR), '')) IS NOT NULL
+          AND coalesce(
+              nullif(list_extract(list_filter(product_name, item -> item.lang = 'fr'), 1).text, ''),
+              nullif(list_extract(product_name, 1).text, '')
+          ) IS NOT NULL
+          AND coalesce(
+              nullif(list_extract(list_filter(ingredients_text, item -> item.lang = 'fr'), 1).text, ''),
+              nullif(list_extract(ingredients_text, 1).text, '')
+          ) IS NOT NULL
           AND coalesce(array_length(data_quality_errors_tags), 0) = 0
-          AND nutriments.sugars_100g IS NOT NULL
-          AND nutriments.sodium_100g IS NOT NULL
+          AND list_extract(list_filter(nutriments, item -> item.name = 'sugars'), 1)."100g" IS NOT NULL
+          AND list_extract(list_filter(nutriments, item -> item.name = 'sodium'), 1)."100g" IS NOT NULL
         ORDER BY code
         """,
         [str(config.product_path)],
@@ -719,8 +737,8 @@ def _arguments() -> DatasetConfig:
     parser.add_argument("--currency", default="EUR")
     parser.add_argument("--price-window-start", default="2025-08-04")
     parser.add_argument("--price-window-end", default="2026-08-03")
-    parser.add_argument("--category-quota", type=int, default=250)
-    parser.add_argument("--target-products", type=int, default=3_000)
+    parser.add_argument("--category-quota", type=int, default=1)
+    parser.add_argument("--target-products", type=int, default=128)
     args = parser.parse_args()
     return DatasetConfig(
         product_path=args.products,

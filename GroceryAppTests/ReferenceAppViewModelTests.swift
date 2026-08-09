@@ -95,6 +95,27 @@ final class ReferenceAppViewModelTests: XCTestCase {
         )
     }
 
+    func testCartScenarioFindsABundledProductThroughProductionComposition() async throws {
+        let supportDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+        let dependencies = try GroceryAppComposition.makeAppDependencies(
+            useOnDeviceModel: false,
+            applicationSupportDirectory: supportDirectory
+        )
+        let model = ReferenceAppViewModel(dependencies: dependencies)
+
+        await model.load()
+        await model.runScenario(.cartReview)
+
+        let product = try XCTUnwrap(model.catalogResults.first)
+        XCTAssertTrue(product.id.rawValue.allSatisfy(\.isNumber))
+        XCTAssertNotNil(dependencies.catalog.product(for: product.id))
+        XCTAssertTrue(model.cartProposal?.proposedCart.contains {
+            $0.productID == product.id
+        } == true)
+    }
+
     func testRunningPhoneAFriendScenarioSelectsItsHouseholdStrategyAndRequest() async {
         let model = ReferenceAppViewModel.makeDemo()
 
@@ -120,7 +141,7 @@ final class ReferenceAppViewModelTests: XCTestCase {
         XCTAssertEqual(model.catalogQuery, ManualDemoScenario.cartReview.catalogQuery)
         XCTAssertEqual(model.cartProposal?.householdID, .budgetFamily)
         XCTAssertTrue(model.cartProposal?.proposedCart.contains {
-            $0.productID == ProductID("whole-wheat-pasta")
+            $0.productID == ProductID("green-lentils")
         } == true)
         XCTAssertNotEqual(model.cartProposal?.proposedCart, originalCart)
     }
@@ -133,11 +154,16 @@ final class ReferenceAppViewModelTests: XCTestCase {
         await model.approveCartProposal()
         await model.runScenario(.cartReview)
 
-        XCTAssertEqual(model.cartProposal?.proposedCart, model.cartProposal?.originalCart.map {
-            $0.productID == ProductID("whole-wheat-pasta")
-                ? CartItem(productID: $0.productID, quantity: $0.quantity + 1)
-                : $0
-        })
+        var expectedCart = model.cartProposal?.originalCart ?? []
+        if let index = expectedCart.firstIndex(where: { $0.productID == ProductID("green-lentils") }) {
+            expectedCart[index] = CartItem(
+                productID: expectedCart[index].productID,
+                quantity: expectedCart[index].quantity + 1
+            )
+        } else {
+            expectedCart.append(CartItem(productID: ProductID("green-lentils"), quantity: 1))
+        }
+        XCTAssertEqual(model.cartProposal?.proposedCart, expectedCart)
     }
 
     func testHouseholdComparisonPreservesAHouseholdChosenBetweenRuns() async {
@@ -153,7 +179,7 @@ final class ReferenceAppViewModelTests: XCTestCase {
     }
 
     func testPhoneAFriendScenarioExposesItsIsolatedTraceWithAConfiguredFake() async {
-        let dependencies = GroceryAppComposition.makeAppDependencies(
+        let dependencies = GroceryAppComposition.makeDemoDependencies(
             useOnDeviceModel: false,
             claudeCredentialStore: ConfiguredClaudeCredentialStore(),
             claudeResponder: ScriptedClaudeResponder()

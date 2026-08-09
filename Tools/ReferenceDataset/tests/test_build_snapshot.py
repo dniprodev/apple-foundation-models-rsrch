@@ -13,9 +13,36 @@ import duckdb
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from build_snapshot import DatasetConfig, SnapshotError, build_snapshot, normalise_barcode
+from prepare_product_subset import ProductSubsetConfig, prepare_product_subset
 
 
 class ReferenceDatasetBuilderTests(unittest.TestCase):
+    def test_preparation_keeps_only_products_with_eligible_prices(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            products = root / "products.parquet"
+            prices = root / "prices.parquet"
+            output = root / "matched-products.parquet"
+            self._write_inputs(products, prices)
+
+            count = prepare_product_subset(
+                ProductSubsetConfig(
+                    product_path=str(products),
+                    price_path=prices,
+                    output_path=output,
+                    price_window_start="2025-01-01",
+                    price_window_end="2025-12-31",
+                )
+            )
+
+            self.assertEqual(count, 9)
+            with duckdb.connect() as database:
+                product_name_type = database.execute(
+                    "SELECT typeof(product_name) FROM read_parquet(?) LIMIT 1",
+                    [str(output)],
+                ).fetchone()[0]
+                self.assertIn("STRUCT(lang VARCHAR", product_name_type)
+
     def test_normalise_barcode_preserves_text_and_pads_short_codes(self) -> None:
         self.assertEqual(normalise_barcode(" 1234567 "), "01234567")
         self.assertEqual(normalise_barcode("0001234567890"), "0001234567890")
@@ -121,20 +148,25 @@ class ReferenceDatasetBuilderTests(unittest.TestCase):
             SELECT * FROM (
                 SELECT
                     code,
-                    'Breakfast ' || CAST(index AS VARCHAR) AS product_name,
-                    'Breakfast ' || CAST(index AS VARCHAR) AS product_name_fr,
+                    [struct_pack(
+                        lang := 'fr',
+                        "text" := 'Breakfast ' || CAST(index AS VARCHAR)
+                    )] AS product_name,
                     'Brand' AS brands,
                     '500 g' AS quantity,
-                    500.0::DOUBLE AS product_quantity,
+                    '500' AS product_quantity,
                     'g' AS product_quantity_unit,
                     ['en:france'] AS countries_tags,
-                    'Ingredients' AS ingredients_text,
-                    'Ingredients' AS ingredients_text_fr,
+                    [struct_pack(lang := 'fr', "text" := 'Ingredients')] AS ingredients_text,
                     ['en:vegetarian'] AS ingredients_analysis_tags,
                     ['en:food'] AS categories_tags,
-                    struct_pack(sugars_100g := 2.0::DOUBLE, sodium_100g := 10.0::DOUBLE,
-                                 salt_100g := 0.1::DOUBLE, proteins_100g := 4.0::DOUBLE,
-                                 fiber_100g := 2.0::DOUBLE) AS nutriments,
+                    [
+                        struct_pack(name := 'sugars', "100g" := 2.0::DOUBLE),
+                        struct_pack(name := 'sodium', "100g" := 10.0::DOUBLE),
+                        struct_pack(name := 'salt', "100g" := 0.1::DOUBLE),
+                        struct_pack(name := 'proteins', "100g" := 4.0::DOUBLE),
+                        struct_pack(name := 'fiber', "100g" := 2.0::DOUBLE)
+                    ] AS nutriments,
                     'a' AS nutriscore_grade,
                     1::INTEGER AS nova_group,
                     0.8::DOUBLE AS completeness,

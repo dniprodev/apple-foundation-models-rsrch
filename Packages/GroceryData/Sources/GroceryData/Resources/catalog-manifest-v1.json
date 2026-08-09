@@ -1,0 +1,56 @@
+{
+  "artifact": {
+    "logical_sha256": "71f46e9debfc6dba23002c44142924a442531666fd03514bd0ed806e7758e9e1",
+    "price_observation_count": 2350,
+    "product_count": 128,
+    "sha256": "3a86042c9d77430ead972bf8897a5476706c1e1c20cf0e7dd82e8f031fcf7800"
+  },
+  "builder_version": "1",
+  "market": {
+    "country": "FR",
+    "currency": "EUR"
+  },
+  "price_window": {
+    "end": "2026-08-03",
+    "start": "2025-08-04"
+  },
+  "selection": {
+    "category_counts": {
+      "bread_wraps": 14,
+      "breakfast": 21,
+      "dairy_alternatives": 15,
+      "fruit_vegetables": 2,
+      "pantry_staples": 5,
+      "proteins": 9,
+      "ready_lunch": 1,
+      "snacks": 61
+    },
+    "category_quota": 1,
+    "rejection_counts": {
+      "duplicate_normalised_barcode": 0,
+      "invalid_barcode": 0,
+      "missing_category_bucket": 0,
+      "missing_package_quantity": 0,
+      "missing_price": 0,
+      "not_in_target_market": 0,
+      "not_selected_after_quality_gate": 61
+    },
+    "retained_products": 128,
+    "target_products": 128
+  },
+  "sources": {
+    "price_revision": "60c5118e3c1434717d1871a37cf2ee27c61aa530",
+    "price_sha256": "cd76192e24953cdb192b15471e84995028dccf43004d643a9d1b0f0b0c1ec5f7",
+    "product_revision": "2a652ac61d03a601e132aa80833823cd33adea2d",
+    "product_sha256": "32b77c1d666de3c6bc9186352591e917af4c0e63fc735759bcce4d45dcd55e6f",
+    "product_source_rows": 189
+  },
+  "verification": {
+    "barcode_lookup_plan": "SEARCH products USING PRIMARY KEY (code=?)",
+    "foreign_keys_clean": true,
+    "full_text_search": true,
+    "full_text_search_plan": "SCAN product_fts VIRTUAL TABLE INDEX 0:M5",
+    "indexed_barcode_lookup": true,
+    "price_references_clean": true
+  }
+}

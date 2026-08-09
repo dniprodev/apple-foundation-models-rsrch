@@ -1,0 +1,4 @@
+The bundled Reference Dataset is derived from Open Food Facts and Open Prices data under the Open Database License.
+
+Open Food Facts: https://world.openfoodfacts.org/
+Open Prices: https://prices.openfoodfacts.org/

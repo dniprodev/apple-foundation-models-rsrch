@@ -64,8 +64,8 @@ enum ManualDemoScenario: String, CaseIterable, Identifiable, Hashable {
                 householdID: .budgetFamily,
                 strategy: .localOnly,
                 orchestrationPattern: .batonPass,
-                request: GroceryRequest(text: "weeknight"),
-                catalogQuery: "weeknight"
+                request: GroceryRequest(text: "lentil"),
+                catalogQuery: "lentil"
             )
         case .householdComparison:
             Configuration(
@@ -165,7 +165,7 @@ final class ReferenceAppViewModel: ObservableObject {
 
     static func makeDemo() -> ReferenceAppViewModel {
         ReferenceAppViewModel(
-            dependencies: GroceryAppComposition.makeAppDependencies(useOnDeviceModel: false)
+            dependencies: GroceryAppComposition.makeDemoDependencies(useOnDeviceModel: false)
         )
     }
 
@@ -293,7 +293,9 @@ final class ReferenceAppViewModel: ObservableObject {
 
         if isCartReview {
             await load()
-            await proposeAddingToSelectedHouseholdCart(ProductID("whole-wheat-pasta"))
+            if let productID = catalogResults.first?.id {
+                await proposeAddingToSelectedHouseholdCart(productID)
+            }
         }
     }
 

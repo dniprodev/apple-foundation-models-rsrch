@@ -1,21 +1,50 @@
 import GroceryComposition
+import GroceryDomain
 import SwiftUI
 
 @main
 struct GroceryApp: App {
-    @StateObject private var model: ReferenceAppViewModel
+    private let startup: Startup
 
     init() {
-        _model = StateObject(
-            wrappedValue: ReferenceAppViewModel(
-                dependencies: GroceryAppComposition.makeAppDependencies()
-            )
-        )
+        do {
+            startup = .ready(try GroceryAppComposition.makeAppDependencies())
+        } catch {
+            startup = .failed(error.localizedDescription)
+        }
     }
 
     var body: some Scene {
         WindowGroup {
-            ReferenceAppView(model: model)
+            switch startup {
+            case let .ready(dependencies):
+                GroceryAppRootView(dependencies: dependencies)
+            case let .failed(message):
+                ContentUnavailableView(
+                    "Reference Dataset Unavailable",
+                    systemImage: "externaldrive.badge.exclamationmark",
+                    description: Text(message)
+                )
+            }
         }
+    }
+
+    private enum Startup {
+        case ready(AppDependencies)
+        case failed(String)
+    }
+}
+
+private struct GroceryAppRootView: View {
+    @StateObject private var model: ReferenceAppViewModel
+
+    init(dependencies: AppDependencies) {
+        _model = StateObject(
+            wrappedValue: ReferenceAppViewModel(dependencies: dependencies)
+        )
+    }
+
+    var body: some View {
+        ReferenceAppView(model: model)
     }
 }
