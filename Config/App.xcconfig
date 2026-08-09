@@ -1,0 +1,5 @@
+// Shared app build settings. Personal signing values belong in App.local.xcconfig.
+CODE_SIGN_STYLE = Automatic
+PRODUCT_BUNDLE_IDENTIFIER = com.example.GroceryApp
+
+#include? "App.local.xcconfig"

@@ -3,14 +3,15 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		1FDDD213850E21E9C2BC664B /* GroceryComposition in Frameworks */ = {isa = PBXBuildFile; productRef = 89A5649E7539D8AE1B5AC06E /* GroceryComposition */; };
+		1FDDD213850E21E9C2BC664B /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		211A3EEE32B0A9AE7FB36EC1 /* ReferenceAppView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 064719EA88B7CEE70DD416EA /* ReferenceAppView.swift */; };
 		404A04F9A4C29E1C29FCBECD /* GroceryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E58E5D3B62AD6BE1681CBE9 /* GroceryApp.swift */; };
 		6A42B5A749682B6FB56D046E /* ReferenceAppViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AB90D5A49A442133E8BE37 /* ReferenceAppViewModelTests.swift */; };
+		94E1AD3D3027706C00953E4C /* GroceryComposition in Frameworks */ = {isa = PBXBuildFile; productRef = ACA035C90CEBEA28C0069EC5 /* GroceryComposition */; };
 		A98008CF11F67A397339E3ED /* ReferenceAppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 453CE6D1D69B150128E7BCC9 /* ReferenceAppViewModel.swift */; };
 /* End PBXBuildFile section */
 
@@ -26,12 +27,13 @@
 
 /* Begin PBXFileReference section */
 		064719EA88B7CEE70DD416EA /* ReferenceAppView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceAppView.swift; sourceTree = "<group>"; };
+		0B4F35E61D52D6B2A7A0B1C3 /* App.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/App.xcconfig; sourceTree = SOURCE_ROOT; };
 		18BEFCA8F6C97778AACE814D /* GroceryAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = GroceryAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3019866F1481401A3DA0107E /* GroceryComposition */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GroceryComposition; path = Packages/GroceryComposition; sourceTree = SOURCE_ROOT; };
 		453CE6D1D69B150128E7BCC9 /* ReferenceAppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceAppViewModel.swift; sourceTree = "<group>"; };
 		6E58E5D3B62AD6BE1681CBE9 /* GroceryApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroceryApp.swift; sourceTree = "<group>"; };
 		C0AB90D5A49A442133E8BE37 /* ReferenceAppViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceAppViewModelTests.swift; sourceTree = "<group>"; };
-		C2B2F306173B9522B893756F /* GroceryApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GroceryApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C2B2F306173B9522B893756F /* GroceryApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GroceryApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -39,6 +41,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				94E1AD3D3027706C00953E4C /* GroceryComposition in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -46,7 +49,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1FDDD213850E21E9C2BC664B /* GroceryComposition in Frameworks */,
+				1FDDD213850E21E9C2BC664B /* (null) in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -91,6 +94,7 @@
 		9A068FDDE140B85143A9869C = {
 			isa = PBXGroup;
 			children = (
+				0B4F35E61D52D6B2A7A0B1C3 /* App.xcconfig */,
 				7AE275B35BE29066DD87D415 /* GroceryApp */,
 				4800EAFA7965C355B3C7F647 /* GroceryAppTests */,
 				84783A8650C4940B017C4A1A /* Packages */,
@@ -147,8 +151,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = B2458CE1E8B69F05D5AEBA60 /* Build configuration list for PBXProject "GroceryApp" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -160,7 +162,7 @@
 			);
 			mainGroup = 9A068FDDE140B85143A9869C;
 			packageReferences = (
-				D7A49E4A2E3B4C5D6E7F8091 /* XCLocalSwiftPackageReference "GroceryComposition" */,
+				D7A49E4A2E3B4C5D6E7F8091 /* XCLocalSwiftPackageReference "Packages/GroceryComposition" */,
 			);
 			projectDirPath = "";
 			projectRoot = "";
@@ -284,6 +286,7 @@
 		};
 		4AE696565DA50AC6F59F78AD /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0B4F35E61D52D6B2A7A0B1C3 /* App.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -293,7 +296,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.GroceryApp;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -302,6 +304,7 @@
 		};
 		58C8239E61E25B81BF03BF95 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0B4F35E61D52D6B2A7A0B1C3 /* App.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -311,7 +314,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.GroceryApp;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -424,19 +426,19 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		D7A49E4A2E3B4C5D6E7F8091 /* XCLocalSwiftPackageReference "Packages/GroceryComposition" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/GroceryComposition;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		ACA035C90CEBEA28C0069EC5 /* GroceryComposition */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = GroceryComposition;
 		};
 /* End XCSwiftPackageProductDependency section */
-
-/* Begin XCLocalSwiftPackageReference section */
-		D7A49E4A2E3B4C5D6E7F8091 /* XCLocalSwiftPackageReference "GroceryComposition" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/GroceryComposition;
-		};
-/* End XCLocalSwiftPackageReference section */
 	};
 	rootObject = B4FEE04E5DBFDEDD79E16AF3 /* Project object */;
 }
