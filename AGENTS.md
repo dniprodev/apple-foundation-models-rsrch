@@ -24,6 +24,14 @@ When build output needs to be saved, use
 inspect the resulting log separately with `rg`. Do not combine the build,
 redirection, and log inspection into one shell command.
 
+Use `./scripts/xcrun-beta` for SwiftPM tests and simulator tooling that require
+the pinned Xcode beta developer directory. Swift commands automatically use
+stable project-specific module caches under `/tmp`; callers may override the
+cache paths with `CLANG_MODULE_CACHE_PATH` and `SWIFTPM_MODULECACHE_OVERRIDE`.
+For example:
+`./scripts/xcrun-beta swift test --package-path Packages/GroceryModels` or
+`./scripts/xcrun-beta simctl runtime list -j`.
+
 ### Commit messages
 
 Every issue-driven implementation commit must reference its GitHub issue in the subject:

@@ -1,6 +1,50 @@
 import Foundation
 import GroceryDomain
 
+/// The result of a baton-pass session that keeps the local and remote profiles
+/// inside one Foundation Models `LanguageModelSession`.
+public struct SharedBatonPassResponse: Sendable, Equatable {
+    public let localEvents: [ModelRunEvent]
+    public let response: RemoteProviderResponse
+    public let invocation: RemoteGroceryInvocation
+
+    public init(
+        localEvents: [ModelRunEvent],
+        response: RemoteProviderResponse,
+        invocation: RemoteGroceryInvocation
+    ) {
+        self.localEvents = localEvents
+        self.response = response
+        self.invocation = invocation
+    }
+}
+
+public struct SharedBatonPassFailure: Error, Sendable {
+    public let failure: RemoteProviderFailure
+    public let localEvents: [ModelRunEvent]
+    public let invocation: RemoteGroceryInvocation
+
+    public init(
+        failure: RemoteProviderFailure,
+        localEvents: [ModelRunEvent],
+        invocation: RemoteGroceryInvocation
+    ) {
+        self.failure = failure
+        self.localEvents = localEvents
+        self.invocation = invocation
+    }
+}
+
+/// Provider seam for the shared-history baton-pass pattern. The ordinary
+/// `RemoteGroceryProvider` seam remains available for scripted tests and the
+/// isolated phone-a-friend pattern.
+public protocol SharedBatonPassRemoteProvider: RemoteGroceryProvider {
+    func respondWithSharedBatonPass(
+        for request: GroceryRequest,
+        household: DemoHousehold?
+    ) async throws -> SharedBatonPassResponse
+}
+
 public protocol PhoneAFriendParentAnswerer: Sendable {
     func answer(
         for request: GroceryRequest,
@@ -97,12 +141,113 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
                 }
             }
 
+            if let sharedProvider = provider as? any SharedBatonPassRemoteProvider {
+                return await answerWithSharedBatonPass(
+                    request: request,
+                    household: household,
+                    startedAt: startedAt,
+                    provider: sharedProvider
+                )
+            }
+
             return await answerWithBatonPass(
                 request: request,
                 household: household,
                 startedAt: startedAt
             )
         }
+    }
+
+    private func answerWithSharedBatonPass(
+        request: GroceryRequest,
+        household: DemoHousehold?,
+        startedAt: Date,
+        provider: any SharedBatonPassRemoteProvider
+    ) async -> ModelRun {
+        do {
+            let shared = try await provider.respondWithSharedBatonPass(
+                for: request,
+                household: household
+            )
+            let response = try validatedResponse(shared.response, for: shared.invocation)
+            let localRun = sharedLocalRun(
+                request: request,
+                household: household,
+                events: shared.localEvents
+            )
+            let localEvents = shared.localEvents.map { event in
+                event.kind == .finalAnswer
+                    ? ModelRunEvent(kind: .modelOutput, label: "local-answer", content: event.content)
+                    : event
+            }
+            return makeSuccessfulRun(
+                request: request,
+                household: household,
+                startedAt: startedAt,
+                localRuns: [localRun],
+                response: response,
+                invocation: shared.invocation,
+                events: localEvents + response.events + [
+                    ModelRunEvent(kind: .finalAnswer, label: "claude-answer", content: response.answer.text)
+                ],
+                activeProfiles: [.localGrocery, .claudeGrocery],
+                transitions: [
+                    ModelProfileTransition(from: .localGrocery, to: .claudeGrocery)
+                ],
+                finalAnswerProfile: .claudeGrocery
+            )
+        } catch let sharedFailure as SharedBatonPassFailure {
+            return providerFailureRun(
+                sharedFailure.failure,
+                request: request,
+                household: household,
+                startedAt: startedAt,
+                localRun: sharedLocalRun(
+                    request: request,
+                    household: household,
+                    events: sharedFailure.localEvents
+                ),
+                invocation: sharedFailure.invocation
+            )
+        } catch {
+            return failure(
+                for: request,
+                household: household,
+                startedAt: startedAt,
+                tools: [],
+                errorCode: "claude-request-failed",
+                message: "Hybrid assistance could not complete this request."
+            )
+        }
+    }
+
+    private func sharedLocalRun(
+        request: GroceryRequest,
+        household: DemoHousehold?,
+        events: [ModelRunEvent]
+    ) -> ModelRun {
+        ModelRun(
+            request: request,
+            answer: GroceryAnswer(text: "The local profile handed the request to Claude."),
+            events: events,
+            trace: ModelTrace(
+                strategy: .localOnly,
+                provider: .appleOnDevice,
+                householdID: household?.id,
+                intentID: "catalog-and-household",
+                tools: events.map(\.label),
+                toolEvents: events,
+                activeProfiles: [.localGrocery],
+                profileActivations: [ModelProfileActivation(
+                    profile: .localGrocery,
+                    trigger: "application-state:grocery-request",
+                    effectiveInstructions: [],
+                    tools: events.map(\.label),
+                    selectedModel: "apple-on-device-system",
+                    ownsFinalAnswer: false
+                )]
+            )
+        )
     }
 
     private func answerWithBatonPass(
@@ -290,6 +435,11 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
                 orchestrationPattern: invocation.contextView.pattern,
                 activeProfiles: activeProfiles,
                 profileTransitions: transitions,
+                profileActivations: profileActivations(
+                    for: invocation,
+                    localRun: localRuns.first,
+                    finalAnswerProfile: finalAnswerProfile
+                ),
                 finalAnswerProfile: finalAnswerProfile,
                 privacyConcerns: invocation.contextView.privacyConcerns
             )
@@ -358,6 +508,11 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
                 orchestrationPattern: invocation?.contextView.pattern,
                 activeProfiles: failureProfiles,
                 profileTransitions: failureTransitions,
+                profileActivations: profileActivations(
+                    for: invocation,
+                    localRun: localRun,
+                    finalAnswerProfile: finalAnswerProfile
+                ),
                 finalAnswerProfile: finalAnswerProfile,
                 privacyConcerns: invocation?.contextView.privacyConcerns ?? []
             )
@@ -546,6 +701,37 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
                 result.append(value)
             }
         }
+    }
+
+    private func profileActivations(
+        for invocation: RemoteGroceryInvocation?,
+        localRun: ModelRun?,
+        finalAnswerProfile: ModelProfileID?
+    ) -> [ModelProfileActivation] {
+        guard let invocation else { return [] }
+        let localInstructions = localRun?.trace.profileActivations.first?.effectiveInstructions ?? []
+        let localTools = localRun?.trace.tools ?? []
+        let local = ModelProfileActivation(
+            profile: .localGrocery,
+            trigger: "application-state:grocery-request",
+            effectiveInstructions: localInstructions,
+            tools: localTools,
+            selectedModel: "apple-on-device-system",
+            ownsFinalAnswer: finalAnswerProfile == .localGrocery
+        )
+        let remote = ModelProfileActivation(
+            profile: invocation.contextView.pattern == .phoneAFriend
+                ? .claudeChildGrocery
+                : .claudeGrocery,
+            trigger: invocation.contextView.pattern == .phoneAFriend
+                ? "remote-task:validated"
+                : "model-tool:pass-to-claude",
+            effectiveInstructions: [invocation.contextView.instructions],
+            tools: invocation.contextView.toolDefinitions,
+            selectedModel: "claude-sonnet-4.6",
+            ownsFinalAnswer: finalAnswerProfile == .claudeGrocery
+        )
+        return [local, remote]
     }
 
     private func elapsedMilliseconds(since startedAt: Date) -> Int {

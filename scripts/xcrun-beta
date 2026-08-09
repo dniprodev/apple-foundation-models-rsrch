@@ -1,0 +1,10 @@
+#!/bin/zsh
+
+# Run Xcode developer tools with the repository's pinned Xcode beta toolchain.
+# Swift commands also get stable project-specific module caches. Callers can
+# override either cache path by exporting the corresponding environment value.
+exec env \
+  DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
+  CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-/tmp/apple-foundation-models-rsrch-clang-cache}" \
+  SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-/tmp/apple-foundation-models-rsrch-swiftpm-cache}" \
+  /usr/bin/xcrun "$@"

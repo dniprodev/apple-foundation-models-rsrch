@@ -267,6 +267,69 @@ struct GroceryModelsTests {
         #expect(run.events.map(\.kind) == [.toolOutput, .modelOutput, .error, .finalAnswer])
     }
 
+    @Test func batonPassUsesOneSharedSessionWhenTheProviderOffersThatSeam() async {
+        let invocation = RemoteGroceryInvocation(
+            contextView: RemoteContextView(
+                pattern: .batonPass,
+                instructions: "Continue with the shared grocery history.",
+                prompt: "find lentils",
+                sharedHistory: [
+                    RemoteHistoryEntry(
+                        role: .toolOutput,
+                        label: "household-context",
+                        content: "Green lentils ×2"
+                    )
+                ],
+                toolDefinitions: ["public-catalog"],
+                privacyConcerns: ["Shared history contains App-Owned Context."]
+            )
+        )
+        let provider = TestSharedBatonPassProvider(
+            response: SharedBatonPassResponse(
+                localEvents: [
+                    ModelRunEvent(
+                        kind: .toolOutput,
+                        label: "household-context",
+                        content: "Green lentils ×2"
+                    )
+                ],
+                response: RemoteProviderResponse(
+                    answer: GroceryAnswer(text: "Use the lentils already in the pantry."),
+                    events: [
+                        ModelRunEvent(
+                            kind: .modelOutput,
+                            label: "shared-session-stream",
+                            content: "Use the lentils already in the pantry."
+                        )
+                    ],
+                    tools: ["public-catalog"]
+                ),
+                invocation: invocation
+            )
+        )
+        let assistant = HybridGroceryAssistant(
+            localAssistant: FailingLocalAssistant(),
+            provider: provider
+        )
+
+        let run = await assistant.answer(for: GroceryRequest(text: "find lentils"))
+
+        #expect(await provider.wasCalled)
+        #expect(run.answer.text == "Use the lentils already in the pantry.")
+        #expect(run.trace.remoteSessionID == invocation.sessionID)
+        #expect(run.trace.profileTransitions == [
+            ModelProfileTransition(from: .localGrocery, to: .claudeGrocery)
+        ])
+        #expect(run.trace.profileActivations.map(\.profile) == [.localGrocery, .claudeGrocery])
+        #expect(run.trace.profileActivations.last?.tools == ["public-catalog"])
+        #expect(run.trace.profileActivations.last?.ownsFinalAnswer == true)
+        #expect(run.events.map(\.label) == [
+            "household-context",
+            "shared-session-stream",
+            "claude-answer"
+        ])
+    }
+
     @Test func phoneAFriendUsesAnIsolatedValidatedTaskAndKeepsFinalAnswerWithTheParent() async {
         let localRun = ModelRun(
             request: GroceryRequest(text: "Find a lower-sugar cereal"),
@@ -461,6 +524,83 @@ struct GroceryModelsTests {
             toolEvents[1],
             ModelRunEvent(kind: .modelOutput, label: "claude-stream", content: " lentils")
         ])
+    }
+
+    @Test func liveClaudeResponderUsesOneSharedDynamicSessionForBatonPass() async throws {
+        let sessions = TestClaudeSessionFactory(
+            events: [
+                .modelRun(ModelRunEvent(
+                    kind: .toolCall,
+                    label: "pass-to-claude",
+                    content: "The local context is ready."
+                )),
+                .modelRun(ModelRunEvent(
+                    kind: .toolOutput,
+                    label: "pass-to-claude",
+                    content: "The shared grocery session was handed to Claude."
+                )),
+                .snapshot("Use the lentils already in the pantry.")
+            ]
+        )
+        let responder = ClaudeFoundationModelsResponder(sessionFactory: sessions)
+
+        let shared = try await responder.respondWithSharedBatonPass(
+            for: GroceryRequest(text: "find lentils"),
+            household: nil,
+            apiKey: "runtime-key"
+        )
+        let request = try #require(await sessions.lastRequest)
+
+        #expect(request.kind == .sharedDynamicProfile)
+        #expect(request.prompt.contains("Pass the baton to Claude"))
+        #expect(request.toolNames == ["public-catalog"])
+        #expect(shared.invocation.session.ownership == .sharedParent)
+        #expect(shared.invocation.contextView.prompt == request.prompt)
+        #expect(shared.invocation.contextView.sharedHistory.map(\.label) == [
+            "pass-to-claude",
+            "pass-to-claude"
+        ])
+        #expect(shared.localEvents.map(\.label) == [
+            "household-context",
+            "search-catalog",
+            "pass-to-claude",
+            "pass-to-claude"
+        ])
+        #expect(shared.response.answer.text == "Use the lentils already in the pantry.")
+        #expect(shared.response.events == [
+            ModelRunEvent(
+                kind: .modelOutput,
+                label: "shared-session-stream",
+                content: "Use the lentils already in the pantry."
+            )
+        ])
+    }
+
+    @Test func liveClaudeResponderPreservesSharedSessionCancellation() async throws {
+        let sessions = TestClaudeSessionFactory(
+            events: [
+                .modelRun(ModelRunEvent(
+                    kind: .toolOutput,
+                    label: "pass-to-claude",
+                    content: "The shared grocery session was handed to Claude."
+                ))
+            ],
+            completion: .cancelled
+        )
+        let responder = ClaudeFoundationModelsResponder(sessionFactory: sessions)
+
+        do {
+            _ = try await responder.respondWithSharedBatonPass(
+                for: GroceryRequest(text: "find lentils"),
+                household: nil,
+                apiKey: "runtime-key"
+            )
+            Issue.record("Expected the shared session cancellation to throw")
+        } catch let failure as SharedBatonPassFailure {
+            #expect(failure.failure == .cancelled(events: []))
+            #expect(failure.invocation.contextView.prompt.contains("Grocery request: find lentils"))
+            #expect(failure.localEvents.map(\.label).contains("pass-to-claude"))
+        }
     }
 
     @Test func liveClaudeResponderBuildsIsolatedChildWithoutSharedPrivateHistory() async throws {
@@ -673,6 +813,41 @@ private struct TestLocalAssistant: GroceryAssistant {
     }
 }
 
+private struct FailingLocalAssistant: GroceryAssistant {
+    func answer(for request: GroceryRequest, household: DemoHousehold?) async -> ModelRun {
+        Issue.record("The shared baton-pass seam must not create a separate local session")
+        return ModelRun(request: request, answer: GroceryAnswer(text: "unexpected"))
+    }
+}
+
+private actor TestSharedBatonPassProvider: SharedBatonPassRemoteProvider {
+    let response: SharedBatonPassResponse
+    private(set) var wasCalled = false
+
+    init(response: SharedBatonPassResponse) {
+        self.response = response
+    }
+
+    nonisolated var provider: ModelProvider { .claude }
+
+    func availability() async -> RemoteProviderState { .ready }
+
+    func respond(
+        to invocation: RemoteGroceryInvocation
+    ) async throws -> RemoteProviderResponse {
+        Issue.record("The shared baton-pass seam must be used instead of a second provider request")
+        return response.response
+    }
+
+    func respondWithSharedBatonPass(
+        for request: GroceryRequest,
+        household: DemoHousehold?
+    ) async throws -> SharedBatonPassResponse {
+        wasCalled = true
+        return response
+    }
+}
+
 private struct TestPhoneParentAnswerer: PhoneAFriendParentAnswerer {
     let answer: GroceryAnswer
 
@@ -737,6 +912,18 @@ private actor TestClaudeSessionFactory: ClaudeFoundationModelsSessionFactory {
         for request: ClaudeSessionRequest,
         apiKey: String
     ) -> ClaudeSessionOutput {
+        lastRequest = request
+        lastAPIKey = apiKey
+        return ClaudeSessionOutput(
+            events: events,
+            completion: completion
+        )
+    }
+
+    func sharedResponse(
+        for request: ClaudeSessionRequest,
+        apiKey: String
+    ) async -> ClaudeSessionOutput {
         lastRequest = request
         lastAPIKey = apiKey
         return ClaudeSessionOutput(

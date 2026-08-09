@@ -10,6 +10,7 @@ public protocol ClaudeResponder: Sendable {
 
 public enum ClaudeProviderError: Error, Sendable, Equatable {
     case notConfigured
+    case sharedBatonPassUnavailable
 }
 
 public struct UnavailableClaudeResponder: ClaudeResponder, Sendable {
@@ -30,7 +31,7 @@ public struct UnavailableClaudeResponder: ClaudeResponder, Sendable {
 /// The responder is deliberately injected. The app can use a real Claude
 /// session adapter when the beta package is available, while tests use a fake
 /// responder and never need a credential or network request.
-public struct ClaudeRemoteProvider: RemoteGroceryProvider, Sendable {
+public struct ClaudeRemoteProvider: SharedBatonPassRemoteProvider, Sendable {
     public let provider: ModelProvider = .claude
 
     private let credentialStore: any ClaudeCredentialStore
@@ -56,5 +57,22 @@ public struct ClaudeRemoteProvider: RemoteGroceryProvider, Sendable {
             throw ClaudeProviderError.notConfigured
         }
         return try await responder.respond(to: invocation, apiKey: apiKey)
+    }
+
+    public func respondWithSharedBatonPass(
+        for request: GroceryRequest,
+        household: DemoHousehold?
+    ) async throws -> SharedBatonPassResponse {
+        guard let apiKey = await credentialStore.credential() else {
+            throw ClaudeProviderError.notConfigured
+        }
+        guard let responder = responder as? any ClaudeSharedBatonPassResponder else {
+            throw ClaudeProviderError.sharedBatonPassUnavailable
+        }
+        return try await responder.respondWithSharedBatonPass(
+            for: request,
+            household: household,
+            apiKey: apiKey
+        )
     }
 }
