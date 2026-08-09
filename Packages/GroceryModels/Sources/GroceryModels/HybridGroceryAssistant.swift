@@ -5,15 +5,18 @@ import GroceryDomain
 /// inside one Foundation Models `LanguageModelSession`.
 public struct SharedBatonPassResponse: Sendable, Equatable {
     public let localEvents: [ModelRunEvent]
+    public let localProfileActivation: ModelProfileActivation
     public let response: RemoteProviderResponse
     public let invocation: RemoteGroceryInvocation
 
     public init(
         localEvents: [ModelRunEvent],
+        localProfileActivation: ModelProfileActivation,
         response: RemoteProviderResponse,
         invocation: RemoteGroceryInvocation
     ) {
         self.localEvents = localEvents
+        self.localProfileActivation = localProfileActivation
         self.response = response
         self.invocation = invocation
     }
@@ -22,15 +25,18 @@ public struct SharedBatonPassResponse: Sendable, Equatable {
 public struct SharedBatonPassFailure: Error, Sendable {
     public let failure: RemoteProviderFailure
     public let localEvents: [ModelRunEvent]
+    public let localProfileActivation: ModelProfileActivation
     public let invocation: RemoteGroceryInvocation
 
     public init(
         failure: RemoteProviderFailure,
         localEvents: [ModelRunEvent],
+        localProfileActivation: ModelProfileActivation,
         invocation: RemoteGroceryInvocation
     ) {
         self.failure = failure
         self.localEvents = localEvents
+        self.localProfileActivation = localProfileActivation
         self.invocation = invocation
     }
 }
@@ -173,7 +179,8 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
             let localRun = sharedLocalRun(
                 request: request,
                 household: household,
-                events: shared.localEvents
+                events: shared.localEvents,
+                profileActivation: shared.localProfileActivation
             )
             let localEvents = shared.localEvents.map { event in
                 event.kind == .finalAnswer
@@ -205,7 +212,8 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
                 localRun: sharedLocalRun(
                     request: request,
                     household: household,
-                    events: sharedFailure.localEvents
+                    events: sharedFailure.localEvents,
+                    profileActivation: sharedFailure.localProfileActivation
                 ),
                 invocation: sharedFailure.invocation
             )
@@ -224,7 +232,8 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
     private func sharedLocalRun(
         request: GroceryRequest,
         household: DemoHousehold?,
-        events: [ModelRunEvent]
+        events: [ModelRunEvent],
+        profileActivation: ModelProfileActivation
     ) -> ModelRun {
         ModelRun(
             request: request,
@@ -238,14 +247,7 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
                 tools: events.map(\.label),
                 toolEvents: events,
                 activeProfiles: [.localGrocery],
-                profileActivations: [ModelProfileActivation(
-                    profile: .localGrocery,
-                    trigger: "application-state:grocery-request",
-                    effectiveInstructions: [],
-                    tools: events.map(\.label),
-                    selectedModel: "apple-on-device-system",
-                    ownsFinalAnswer: false
-                )]
+                profileActivations: [profileActivation]
             )
         )
     }

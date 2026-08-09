@@ -160,6 +160,7 @@ public struct ClaudeFoundationModelsResponder: ClaudeResponder, ClaudeSharedBato
             for: sessionRequest,
             apiKey: apiKey
         )
+        let localProfileActivation = ClaudeBatonPassProfile.activation
         let rendered = renderSharedSessionOutput(output.events)
         let localSessionEvents = Array(rendered.events.prefix(rendered.batonEventEndIndex ?? 0))
         let remoteEvents = Array(rendered.events.dropFirst(rendered.batonEventEndIndex ?? 0))
@@ -212,6 +213,7 @@ public struct ClaudeFoundationModelsResponder: ClaudeResponder, ClaudeSharedBato
             }
             return SharedBatonPassResponse(
                 localEvents: localEvidenceEvents + localSessionEvents,
+                localProfileActivation: localProfileActivation,
                 response: RemoteProviderResponse(
                     answer: GroceryAnswer(text: answer),
                     events: remoteEvents,
@@ -223,6 +225,7 @@ public struct ClaudeFoundationModelsResponder: ClaudeResponder, ClaudeSharedBato
             throw SharedBatonPassFailure(
                 failure: failure,
                 localEvents: localEvidenceEvents + localSessionEvents,
+                localProfileActivation: localProfileActivation,
                 invocation: invocation
             )
         }
@@ -501,9 +504,7 @@ private struct ClaudeBatonPassDynamicProfile: LanguageModelSession.DynamicProfil
         switch state.currentPhase {
         case .local:
             Profile {
-                Instructions {
-                    "Use the local grocery context, then call pass-to-claude to hand the shared session to Claude."
-                }
+                Instructions { ClaudeBatonPassProfile.instructions }
                 ClaudeBatonPassTool(state: state, recorder: recorder)
             }
             .model(SystemLanguageModel.default)
@@ -517,6 +518,19 @@ private struct ClaudeBatonPassDynamicProfile: LanguageModelSession.DynamicProfil
             .transcriptErrorHandlingPolicy(.preserveTranscript)
         }
     }
+}
+
+private enum ClaudeBatonPassProfile {
+    static let instructions = "Use the local grocery context, then call pass-to-claude to hand the shared session to Claude."
+
+    static let activation = ModelProfileActivation(
+        profile: .localGrocery,
+        trigger: "application-state:grocery-request",
+        effectiveInstructions: [instructions],
+        tools: [ClaudeBatonPassTool.toolName],
+        selectedModel: "apple-on-device-system",
+        ownsFinalAnswer: false
+    )
 }
 
 @Generable

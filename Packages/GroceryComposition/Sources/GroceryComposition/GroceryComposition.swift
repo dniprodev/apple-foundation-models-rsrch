@@ -25,7 +25,8 @@ public enum GroceryAppComposition {
         let catalog = try GRDBProductCatalog(databaseURL: databaseURL)
         let householdStore = try GRDBDemoHouseholdStore(
             databaseURL: databaseURL,
-            catalogProducts: catalog.householdSeedProducts()
+            catalogProducts: catalog.householdSeedProducts(),
+            catalogProductIDs: try catalog.allProductIDs()
         )
         return makeDependencies(
             catalog: catalog,

@@ -90,6 +90,7 @@ final class ReferenceAppViewModelTests: XCTestCase {
                 .batonPass,
                 .phoneAFriend,
                 .missingClaudeSetup,
+                .claudeUnavailable,
                 .providerFailure
             ])
         )
@@ -114,6 +115,59 @@ final class ReferenceAppViewModelTests: XCTestCase {
         XCTAssertTrue(model.cartProposal?.proposedCart.contains {
             $0.productID == product.id
         } == true)
+    }
+
+    func testProductionCartScenarioRequiresExplicitApproval() async throws {
+        let supportDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+        let dependencies = try GroceryAppComposition.makeAppDependencies(
+            useOnDeviceModel: false,
+            applicationSupportDirectory: supportDirectory
+        )
+        let model = ReferenceAppViewModel(dependencies: dependencies)
+
+        await model.load()
+        let originalCart = try XCTUnwrap(model.selectedHousehold?.cart)
+        await model.runScenario(.cartReview)
+        XCTAssertEqual(model.selectedHousehold?.cart, originalCart)
+        XCTAssertNotNil(model.cartProposal)
+
+        await model.approveCartProposal()
+
+        XCTAssertNil(model.cartProposal)
+        XCTAssertNotEqual(model.selectedHousehold?.cart, originalCart)
+    }
+
+    func testPrivatePurchaseScenarioUsesProductionCatalogAndHouseholdEvidence() async throws {
+        let supportDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+        let dependencies = try GroceryAppComposition.makeAppDependencies(
+            useOnDeviceModel: false,
+            claudeCredentialStore: UnconfiguredClaudeCredentialStore(),
+            claudeResponder: ScriptedClaudeResponder(),
+            applicationSupportDirectory: supportDirectory
+        )
+        let model = ReferenceAppViewModel(dependencies: dependencies)
+
+        await model.load()
+        await model.runScenario(.privatePurchaseAnalysis)
+
+        let run = try XCTUnwrap(model.modelRun)
+        let household = try XCTUnwrap(model.selectedHousehold)
+        XCTAssertEqual(run.trace.strategy, .localOnly)
+        XCTAssertEqual(run.trace.householdID, .budgetFamily)
+        XCTAssertNil(run.trace.remoteContextView)
+        XCTAssertTrue(run.trace.tools.contains("household-context"))
+        XCTAssertTrue(run.trace.toolEvents.contains { $0.label == "household-context" })
+        XCTAssertFalse(run.answer.evidence.isEmpty)
+        XCTAssertTrue(
+            (household.purchaseHistory.map(\.productID)
+                + household.pantry.map(\.productID)
+                + household.cart.map(\.productID))
+                .allSatisfy { dependencies.catalog.product(for: $0) != nil }
+        )
     }
 
     func testRunningPhoneAFriendScenarioSelectsItsHouseholdStrategyAndRequest() async {
@@ -176,6 +230,32 @@ final class ReferenceAppViewModelTests: XCTestCase {
 
         XCTAssertEqual(model.selectedHouseholdID, .lowWasteSoloShopper)
         XCTAssertEqual(model.modelRun?.trace.householdID, .lowWasteSoloShopper)
+        XCTAssertTrue(model.modelRun?.trace.tools.contains("household-context") == true)
+    }
+
+    func testProductionHouseholdComparisonReplaysAgainstDifferentEvidence() async throws {
+        let supportDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+        let dependencies = try GroceryAppComposition.makeAppDependencies(
+            useOnDeviceModel: false,
+            applicationSupportDirectory: supportDirectory
+        )
+        let model = ReferenceAppViewModel(dependencies: dependencies)
+
+        await model.load()
+        await model.runScenario(.householdComparison)
+        let firstContext = try XCTUnwrap(
+            model.modelRun?.trace.toolEvents.first { $0.label == "household-context" }?.content
+        )
+        model.selectHousehold(.lowWasteSoloShopper)
+        await model.runScenario(.householdComparison)
+        let secondContext = try XCTUnwrap(
+            model.modelRun?.trace.toolEvents.first { $0.label == "household-context" }?.content
+        )
+
+        XCTAssertEqual(model.modelRun?.trace.householdID, .lowWasteSoloShopper)
+        XCTAssertNotEqual(firstContext, secondContext)
     }
 
     func testPhoneAFriendScenarioExposesItsIsolatedTraceWithAConfiguredFake() async {
@@ -197,6 +277,82 @@ final class ReferenceAppViewModelTests: XCTestCase {
         XCTAssertNotNil(model.modelRun?.trace.parentRemoteSessionID)
     }
 
+    func testMissingClaudeScenarioShowsSafeSetupFailure() async throws {
+        let supportDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+        let dependencies = try GroceryAppComposition.makeAppDependencies(
+            useOnDeviceModel: false,
+            claudeCredentialStore: UnconfiguredClaudeCredentialStore(),
+            claudeResponder: ScriptedClaudeResponder(),
+            applicationSupportDirectory: supportDirectory
+        )
+        let model = ReferenceAppViewModel(dependencies: dependencies)
+
+        await model.load()
+        await model.runScenario(.missingClaudeSetup)
+
+        XCTAssertEqual(model.modelRun?.trace.error, "claude-not-configured")
+        XCTAssertEqual(
+            model.modelRun?.answer.text,
+            "Hybrid assistance is not configured. Add a Claude credential to continue."
+        )
+        XCTAssertFalse(model.modelRun?.events.contains { $0.content.contains("test-only-key") } == true)
+    }
+
+    func testProviderFailureScenarioShowsGenericFailureWithoutCredentialMaterial() async throws {
+        let supportDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+        let dependencies = try GroceryAppComposition.makeAppDependencies(
+            useOnDeviceModel: false,
+            claudeCredentialStore: ConfiguredClaudeCredentialStore(),
+            claudeResponder: FailingClaudeResponder(),
+            applicationSupportDirectory: supportDirectory
+        )
+        let model = ReferenceAppViewModel(dependencies: dependencies)
+
+        await model.load()
+        await model.runScenario(.providerFailure)
+
+        XCTAssertEqual(model.modelRun?.trace.error, "claude-request-failed")
+        XCTAssertEqual(
+            model.modelRun?.answer.text,
+            "Hybrid assistance could not complete this request."
+        )
+        XCTAssertFalse(model.modelRun?.trace.remoteContextView?.contains("test-only-key") == true)
+        XCTAssertFalse(model.modelRun?.events.contains { $0.content.contains("test-only-key") } == true)
+    }
+
+    func testUnavailableClaudeScenarioShowsSafeFallback() async throws {
+        let supportDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+        let dependencies = try GroceryAppComposition.makeAppDependencies(
+            useOnDeviceModel: false,
+            claudeCredentialStore: ConfiguredClaudeCredentialStore(),
+            claudeResponder: UnavailableClaudeResponder(),
+            applicationSupportDirectory: supportDirectory
+        )
+        let model = ReferenceAppViewModel(dependencies: dependencies)
+
+        await model.load()
+        await model.runScenario(.claudeUnavailable)
+
+        XCTAssertEqual(model.modelRun?.trace.error, "claude-unavailable")
+        XCTAssertEqual(
+            model.modelRun?.answer.text,
+            "Hybrid assistance is currently unavailable. Use local-only assistance or try again later."
+        )
+    }
+
+}
+
+private struct UnconfiguredClaudeCredentialStore: ClaudeCredentialStore {
+    func hasCredential() async -> Bool { false }
+    func credential() async -> String? { nil }
+    func save(apiKey: String) async throws {}
+    func remove() async throws {}
 }
 
 private struct ConfiguredClaudeCredentialStore: ClaudeCredentialStore {
@@ -225,4 +381,19 @@ private struct ScriptedClaudeResponder: ClaudeResponder {
             tools: ["public-catalog"]
         )
     }
+}
+
+private struct FailingClaudeResponder: ClaudeResponder {
+    func availability() async -> RemoteProviderState { .ready }
+
+    func respond(
+        to invocation: RemoteGroceryInvocation,
+        apiKey: String
+    ) async throws -> RemoteProviderResponse {
+        throw ScenarioProviderError.failed
+    }
+}
+
+private enum ScenarioProviderError: Error, Sendable {
+    case failed
 }

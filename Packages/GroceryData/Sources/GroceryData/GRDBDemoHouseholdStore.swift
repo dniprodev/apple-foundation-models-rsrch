@@ -10,6 +10,7 @@ public actor GRDBDemoHouseholdStore: DemoHouseholdRepository {
     public init(
         databaseURL: URL,
         catalogProducts: [CatalogProduct],
+        catalogProductIDs: Set<ProductID>? = nil,
         seed: UInt64 = DemoHouseholdGenerator.defaultSeed
     ) throws {
         let productIDs = Set(catalogProducts.map(\.id))
@@ -40,7 +41,7 @@ public actor GRDBDemoHouseholdStore: DemoHouseholdRepository {
         }
 
         self.database = database
-        catalogProductIDs = productIDs
+        self.catalogProductIDs = catalogProductIDs ?? productIDs
         initialHouseholds = initial
     }
 

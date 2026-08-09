@@ -293,6 +293,14 @@ struct GroceryModelsTests {
                         content: "Green lentils ×2"
                     )
                 ],
+                localProfileActivation: ModelProfileActivation(
+                    profile: .localGrocery,
+                    trigger: "application-state:grocery-request",
+                    effectiveInstructions: ["Use the local context, then pass the shared session to Claude."],
+                    tools: ["pass-to-claude"],
+                    selectedModel: "apple-on-device-system",
+                    ownsFinalAnswer: false
+                ),
                 response: RemoteProviderResponse(
                     answer: GroceryAnswer(text: "Use the lentils already in the pantry."),
                     events: [
@@ -321,6 +329,10 @@ struct GroceryModelsTests {
             ModelProfileTransition(from: .localGrocery, to: .claudeGrocery)
         ])
         #expect(run.trace.profileActivations.map(\.profile) == [.localGrocery, .claudeGrocery])
+        #expect(run.trace.profileActivations.first?.effectiveInstructions == [
+            "Use the local context, then pass the shared session to Claude."
+        ])
+        #expect(run.trace.profileActivations.first?.tools == ["pass-to-claude"])
         #expect(run.trace.profileActivations.last?.tools == ["public-catalog"])
         #expect(run.trace.profileActivations.last?.ownsFinalAnswer == true)
         #expect(run.events.map(\.label) == [

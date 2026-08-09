@@ -11,6 +11,7 @@ enum ManualDemoScenario: String, CaseIterable, Identifiable, Hashable {
     case batonPass
     case phoneAFriend
     case missingClaudeSetup
+    case claudeUnavailable
     case providerFailure
 
     private struct Configuration {
@@ -34,7 +35,7 @@ enum ManualDemoScenario: String, CaseIterable, Identifiable, Hashable {
                 householdID: .budgetFamily,
                 strategy: .localOnly,
                 orchestrationPattern: .batonPass,
-                request: GroceryRequest(text: "lentils"),
+                request: GroceryRequest(text: "Analyze my recent purchase of lentil products"),
                 catalogQuery: ""
             )
         case .healthierSubstitutions:
@@ -64,7 +65,7 @@ enum ManualDemoScenario: String, CaseIterable, Identifiable, Hashable {
                 householdID: .budgetFamily,
                 strategy: .localOnly,
                 orchestrationPattern: .batonPass,
-                request: GroceryRequest(text: "lentil"),
+                request: GroceryRequest(text: "Review my cart and suggest a lentil"),
                 catalogQuery: "lentil"
             )
         case .householdComparison:
@@ -74,7 +75,7 @@ enum ManualDemoScenario: String, CaseIterable, Identifiable, Hashable {
                 householdID: .nutritionFocusedCouple,
                 strategy: .localOnly,
                 orchestrationPattern: .batonPass,
-                request: GroceryRequest(text: "lentils"),
+                request: GroceryRequest(text: "Plan a lentil meal for my household"),
                 catalogQuery: ""
             )
         case .batonPass:
@@ -111,6 +112,16 @@ enum ManualDemoScenario: String, CaseIterable, Identifiable, Hashable {
             Configuration(
                 title: "Provider failure",
                 description: "With a credential saved, run the request and inspect the generic provider failure and safe trace facts.",
+                householdID: .budgetFamily,
+                strategy: .hybrid,
+                orchestrationPattern: .batonPass,
+                request: GroceryRequest(text: "Find lentils"),
+                catalogQuery: ""
+            )
+        case .claudeUnavailable:
+            Configuration(
+                title: "Unavailable Claude provider",
+                description: "Make the Claude provider unavailable and inspect the safe fallback message and trace error.",
                 householdID: .budgetFamily,
                 strategy: .hybrid,
                 orchestrationPattern: .batonPass,

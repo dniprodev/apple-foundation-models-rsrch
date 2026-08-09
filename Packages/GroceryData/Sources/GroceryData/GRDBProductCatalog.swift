@@ -73,6 +73,12 @@ public struct GRDBProductCatalog: ProductCatalog, Sendable {
         }
     }
 
+    public func allProductIDs() throws -> Set<ProductID> {
+        try database.read { db in
+            Set(try String.fetchAll(db, sql: "SELECT code FROM products").map(ProductID.init))
+        }
+    }
+
     private func makeProduct(row: Row) -> CatalogProduct {
         let brand: String = row["brand"]
         let quantity: String = row["quantity"]
