@@ -287,6 +287,9 @@ public struct ClaudeFoundationModelsResponder: ClaudeResponder, ClaudeSharedBato
             )
         case .isolatedChild:
             guard let task = context.remoteTask else { throw RemoteProviderFailure.failed }
+            guard context.instructions == ClaudeRemoteInvocationPolicy.isolatedChildInstructions else {
+                throw RemoteProviderFailure.failed
+            }
             return ClaudeSessionRequest(
                 sessionID: invocation.sessionID,
                 kind: .isolatedChild,
@@ -340,7 +343,6 @@ private struct LiveClaudeSessionFactory: ClaudeFoundationModelsSessionFactory {
         let publicCatalogTool = request.toolNames.isEmpty
             ? nil
             : ClaudePublicCatalogTool(catalog: catalog, recorder: recorder)
-        let tools: [any Tool] = publicCatalogTool.map { [$0] } ?? []
         let session: LanguageModelSession
         switch request.kind {
         case .sharedDynamicProfile:
@@ -355,11 +357,12 @@ private struct LiveClaudeSessionFactory: ClaudeFoundationModelsSessionFactory {
             )
         case .isolatedChild:
             session = LanguageModelSession(
-                model: model,
-                tools: tools,
-                instructions: request.instructions
+                profile: ClaudeChildDynamicProfile(
+                    model: model,
+                    instructions: request.instructions,
+                    publicCatalogTool: publicCatalogTool
+                )
             )
-            session.transcriptErrorHandlingPolicy = .preserveTranscript
         }
 
         let eventOffset = await recorder.count()
@@ -432,6 +435,27 @@ private struct LiveClaudeSessionFactory: ClaudeFoundationModelsSessionFactory {
 }
 
 private struct ClaudeSharedDynamicProfile: LanguageModelSession.DynamicProfile {
+    let model: ClaudeLanguageModel
+    let instructions: String
+    let publicCatalogTool: ClaudePublicCatalogTool?
+
+    var body: some LanguageModelSession.DynamicProfile {
+        Profile {
+            Instructions { instructions }
+            if let publicCatalogTool {
+                publicCatalogTool
+            }
+        }
+        .model(model)
+        .transcriptErrorHandlingPolicy(.preserveTranscript)
+    }
+}
+
+/// The phone-a-friend profile is intentionally constructed for one validated
+/// Remote Task. It owns a new session transcript and re-composes its
+/// instructions and public tools as the child session is created; no parent
+/// history or private household tools are carried across this boundary.
+private struct ClaudeChildDynamicProfile: LanguageModelSession.DynamicProfile {
     let model: ClaudeLanguageModel
     let instructions: String
     let publicCatalogTool: ClaudePublicCatalogTool?

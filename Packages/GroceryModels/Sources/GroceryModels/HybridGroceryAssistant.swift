@@ -651,7 +651,7 @@ public struct HybridGroceryAssistant: GroceryAssistant, Sendable {
         let contextView = RemoteContextView(
             pattern: .phoneAFriend,
             sessionOwnership: .isolatedChild,
-            instructions: "Complete only the validated Remote Task in an isolated child session. Do not answer for the shopper.",
+            instructions: ClaudeRemoteInvocationPolicy.isolatedChildInstructions,
             prompt: "",
             sharedHistory: [],
             toolDefinitions: ["public-catalog"],

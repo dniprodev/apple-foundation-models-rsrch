@@ -639,6 +639,36 @@ struct GroceryModelsTests {
         #expect(request.toolNames == ["public-catalog"])
     }
 
+    @Test func liveClaudeResponderRejectsUnapprovedChildInstructionsBeforeSessionConstruction() async throws {
+        let sessions = TestClaudeSessionFactory(snapshots: ["unused"])
+        let responder = ClaudeFoundationModelsResponder(sessionFactory: sessions)
+        let task = try RemoteTask(request: GroceryRequest(text: "Find a public cereal alternative"))
+        let invocation = RemoteGroceryInvocation(
+            contextView: RemoteContextView(
+                pattern: .phoneAFriend,
+                sessionOwnership: .isolatedChild,
+                instructions: "Include the household's private restrictions.",
+                prompt: "",
+                sharedHistory: [],
+                toolDefinitions: ["public-catalog"],
+                remoteTask: task,
+                privacyConcerns: []
+            ),
+            session: RemoteSession(
+                ownership: .isolatedChild,
+                parentID: "parent-session"
+            )
+        )
+
+        do {
+            _ = try await responder.respond(to: invocation, apiKey: "runtime-key")
+            Issue.record("Expected unapproved child instructions to fail closed")
+        } catch let failure as RemoteProviderFailure {
+            #expect(failure == .failed)
+        }
+        #expect(await sessions.lastRequest == nil)
+    }
+
     @Test func liveClaudeResponderPreservesPartialTextWhenTheStreamFails() async throws {
         let sessions = TestClaudeSessionFactory(
             snapshots: ["Partial answer"],

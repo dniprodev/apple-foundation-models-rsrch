@@ -1,5 +1,9 @@
 import GroceryDomain
 
+enum ClaudeRemoteInvocationPolicy {
+    static let isolatedChildInstructions = "Complete only the validated Remote Task in an isolated child session. Do not answer for the shopper."
+}
+
 public protocol ClaudeResponder: Sendable {
     func availability() async -> RemoteProviderState
     func respond(
